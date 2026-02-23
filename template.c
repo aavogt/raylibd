@@ -15,7 +15,16 @@ void Init(struct state *s) {
 //INITBODY
 }
 
+void Reinit(struct state *s) {
+//REINITBODY
+}
+
 bool Step(struct state *s) {
+  static bool reinited = false;
+  if (!reinited) {
+    Rinit(s);
+    reinited = true;
+  }
 //STEPBODY
 }
 

@@ -4,6 +4,7 @@
 -- (3) splitting main into Init/Update/Uninit,
 -- (4) splicing the rewritten parts into a text-based template
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
 module Transform where
 
 import Control.Applicative
@@ -13,7 +14,7 @@ import Data.Data.Lens (biplate)
 import Data.Function (on)
 import Data.List (find, findIndex, mapAccumL, partition)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, mapMaybe, isNothing, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe, isNothing, catMaybes, listToMaybe)
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
 import Control.Lens.Extras
@@ -50,12 +51,6 @@ buildStateSpec ast =
       hoistedNames = map fieldOrigName fields
    in StateSpec {..}
 
--- Apply rewriting to the original AST: drop hoisted decls, split main, rewrite uses.
-rewriteOrig :: StateSpec -> CTranslUnit -> CTranslUnit
-rewriteOrig spec =
-  dropHoistedDecls spec
-    . splitMain spec
-    . rewriteUses spec
 
 --------------------------------------------------------------------------------
 -- Collection helpers
@@ -199,15 +194,28 @@ dropHoistedDecls spec (CTranslUnit decls annot) =
       maybe False (`elem` names) (declrName declr)
     shouldDrop _ = False
 
-splitMain :: StateSpec -> CTranslUnit -> CTranslUnit
-splitMain spec (CTranslUnit decls annot) =
-  CTranslUnit (concatMap splitExt decls) annot
+substituteTemplate from template = 
+  let spec = buildStateSpec from
+      render x = show $ Language.C.pretty x
+      renderDecls decls = concatMap ((++";") . render) decls
+      Just (Bodies { .. }) = getBodies spec from
+  in template & lined %~ \case
+    "//STRUCTBODY" -> renderDecls structBody
+    "//REINITBODY" -> render reinitBody 
+    "//INITBODY" -> render initBody
+    "//STEPBODY" -> render stepBody
+    "//UNINITBODY" -> render uninitBody
+    x -> x
+
+
+data Bodies = Bodies { initBody, stepBody  , reinitBody, uninitBody :: CStat, structBody :: [CDecl] }
+
+getBodies :: StateSpec -> CTranslUnit -> Maybe Bodies
+getBodies spec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
   where
     splitExt (CFDefExt def)
-      | declrName (funDeclr def) == Just "main" =
-          let (initDef, updateDef, uninitDef) = splitMainDef def
-           in [CFDefExt initDef, CFDefExt updateDef, CFDefExt uninitDef]
-    splitExt ext = [ext]
+      | declrName (funDeclr def) == Just "main" = splitMainDef def
+    splitExt ext = Nothing
 
     splitMainDef (CFunDef _ _ _ stmt _) =
       case stmt of
@@ -221,17 +229,12 @@ splitMain spec (CTranslUnit decls annot) =
                   <> loopBodyItems
                   <> maybe [] (\cond -> [CBlockStmt (CReturn (Just cond) undefNode)]) loopCond
               initBody = CCompound [] initItems' pos
-              updateBody = CCompound [] updateItems pos
+              stepBody = CCompound [] updateItems pos
               uninitBody = CCompound [] postItems pos
-           in ( mkFunDef "Init" (CVoidType undefNode) initBody,
-                mkFunDef "Update" (CBoolType undefNode) updateBody,
-                mkFunDef "Uninit" (CVoidType undefNode) uninitBody
-              )
-        _ ->
-          ( mkFunDef "Init" (CVoidType undefNode) (CCompound [] [] undefNode),
-            mkFunDef "Update" (CBoolType undefNode) (CCompound [] [] undefNode),
-            mkFunDef "Uninit" (CVoidType undefNode) (CCompound [] [] undefNode)
-          )
+              reinitBody = CBreak pos
+              structBody = buildStateMembers (fields spec)
+           in Just (Bodies { .. })
+        _ -> Nothing
 
     splitOnLastWhile items =
       case findIndex isWhile (reverse items) of

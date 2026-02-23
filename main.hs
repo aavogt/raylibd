@@ -27,23 +27,7 @@ main = do
   -- putStrLn =<< readFile mainc
   writeFile "ref/rl.ast" (show $ over template (const undefNode) from)
 
-  let spec = buildStateSpec from
-      orig' = rewriteOrig spec from
-      render x = show $ Language.C.pretty x
-      renderDecls decls = concatMap ((++";") . render) decls
-      structBody = renderDecls (buildStateMembers (fields spec))
-
-      initBody = render (extractFuncBody "Init" orig')
-      stepBody = render (extractFuncBody "Update" orig')
-      uninitBody = render (extractFuncBody "Uninit" orig')
-
-  subbed <- readFile "template.c" <&> lined %~ \case
-    "//STRUCTBODY" -> structBody
-    "//INITBODY" -> initBody
-    "//STEPBODY" -> stepBody
-    "//UNINITBODY" -> uninitBody
-    x -> x
-
+  subbed <- substituteTemplate from <$> readFile "template.c"
   writeFile "rl2.c" subbed
   putStrLn subbed
 
