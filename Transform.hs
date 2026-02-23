@@ -1,20 +1,17 @@
--- The transformation rewrites an original C AST into a hot-reloadable shape by
+-- The transformation rewrites an original C raylib app into a hot-reloadable shape by
 -- (1) collecting globals + static locals into a state record,
 -- (2) rewriting identifier uses to field access (s->field),
 -- (3) splitting main into Init/Update/Uninit,
 -- (4) splicing the rewritten parts into a text-based template
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
-module Transform where
+module Transform (substituteTemplate) where
 
-import Control.Applicative
 import Control.Lens
-import Control.Lens.Plated
 import Data.Data.Lens (biplate)
-import Data.Function (on)
-import Data.List (find, findIndex, mapAccumL, partition)
+import Data.List
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, mapMaybe, isNothing, catMaybes, listToMaybe)
+import Data.Maybe
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
 import Control.Lens.Extras
@@ -115,93 +112,14 @@ toUseRewrite =
           useExpr = mkMember (fieldName field)
         }
 
-rewriteUses :: StateSpec -> CTranslUnit -> CTranslUnit
-rewriteUses spec (CTranslUnit decls annot) =
-  CTranslUnit (map rewriteExt decls) annot
-  where
-    rewrites = useRewrite spec
-
-    rewriteExt (CFDefExt def@(CFunDef _ declr _ _ _)) =
-      CFDefExt (def & template %~ rewriteExpr rewrites (declrName declr))
-    rewriteExt ext =
-      ext & template %~ rewriteExpr rewrites Nothing
-
-lookupRewrite :: [UseRewrite] -> Maybe String -> String -> Maybe CExpr
-lookupRewrite rewrites scope name =
-  let scoped = find matchesScope rewrites
-      global = find matchesGlobal rewrites
-   in useExpr <$> (scoped <|> global)
-  where
-    matchesScope r = useName r == name && useScope r == scope
-    matchesGlobal r = useName r == name && isNothing (useScope r)
-
-rewriteExpr :: [UseRewrite] -> Maybe String -> CExpr -> CExpr
-rewriteExpr rewrites scope expr =
-  case expr of
-    CVar ident _ -> fromMaybe expr (lookupRewrite rewrites scope (identName ident))
-    _ -> expr
-
-dropHoistedDecls :: StateSpec -> CTranslUnit -> CTranslUnit
-dropHoistedDecls spec (CTranslUnit decls annot) =
-  CTranslUnit (mapMaybe dropExt decls) annot
-  where
-    names = hoistedNames spec
-
-    dropExt (CDeclExt decl) = CDeclExt <$> dropDecl False decl
-    dropExt (CFDefExt def) = Just (CFDefExt (dropInFun def))
-    dropExt ext = Just ext
-
-    dropInFun (CFunDef specs declr decls stmt n) =
-      CFunDef specs declr decls (dropInStmt stmt) n
-
-    dropInStmt stmt =
-      case stmt of
-        CCompound labels items pos ->
-          CCompound labels (mapMaybe dropItem items) pos
-        CIf cond t e pos ->
-          CIf cond (dropInStmt t) (fmap dropInStmt e) pos
-        CWhile cond body isDo pos ->
-          CWhile cond (dropInStmt body) isDo pos
-        CFor initExpr cond step body pos ->
-          CFor initExpr cond step (dropInStmt body) pos
-        CSwitch expr body pos ->
-          CSwitch expr (dropInStmt body) pos
-        CLabel ident body attrs pos ->
-          CLabel ident (dropInStmt body) attrs pos
-        CCase expr body pos ->
-          CCase expr (dropInStmt body) pos
-        CCases l r body pos ->
-          CCases l r (dropInStmt body) pos
-        CDefault body pos ->
-          CDefault (dropInStmt body) pos
-        _ -> stmt
-
-    dropItem (CBlockDecl decl) = CBlockDecl <$> dropDecl True decl
-    dropItem (CBlockStmt s) = Just (CBlockStmt (dropInStmt s))
-    dropItem item = Just item
-
-    dropDecl requireStatic (CDecl specs declrs pos) =
-      if requireStatic && not (isStaticSpec specs)
-        then Just (CDecl specs declrs pos)
-        else
-          let declrs' = filter (not . shouldDrop) declrs
-           in if null declrs'
-                then Nothing
-                else Just (CDecl specs declrs' pos)
-    dropDecl _ d = Just d
-
-    shouldDrop (Just declr, _, _) =
-      maybe False (`elem` names) (declrName declr)
-    shouldDrop _ = False
-
-substituteTemplate from template = 
+substituteTemplate from template =
   let spec = buildStateSpec from
       render x = show $ Language.C.pretty x
-      renderDecls decls = concatMap ((++";") . render) decls
       Just (Bodies { .. }) = getBodies spec from
+      renderDecls = concatMap ((++";") . render)
   in template & lined %~ \case
     "//STRUCTBODY" -> renderDecls structBody
-    "//REINITBODY" -> render reinitBody 
+    "//REINITBODY" -> render reinitBody
     "//INITBODY" -> render initBody
     "//STEPBODY" -> render stepBody
     "//UNINITBODY" -> render uninitBody
@@ -262,45 +180,6 @@ getBodies spec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
 isWhile :: CBlockItem -> Bool
 isWhile (CBlockStmt CWhile {}) = True
 isWhile _ = False
-
---------------------------------------------------------------------------------
--- Template splicing helpers
---------------------------------------------------------------------------------
-
-replaceStateStructFields :: [StateField] -> CTranslUnit -> CTranslUnit
-replaceStateStructFields fs (CTranslUnit decls annot) =
-  CTranslUnit (map replaceExt decls) annot
-  where
-    replaceExt (CDeclExt decl) = CDeclExt (replaceDecl decl)
-    replaceExt ext = ext
-
-    replaceDecl (CDecl specs declrs pos) =
-      CDecl (map replaceSpec specs) declrs pos
-    replaceDecl decl = decl
-
-    replaceSpec (CTypeSpec (CSUType (CStruct tag (Just ident) (Just _) attrs pos1) pos2))
-      | identName ident == "state" =
-          let members = buildStateMembers fs
-           in CTypeSpec (CSUType (CStruct tag (Just ident) (Just members) attrs pos1) pos2)
-    replaceSpec spec = spec
-
-replaceFuncBody :: String -> CStat -> CTranslUnit -> CTranslUnit
-replaceFuncBody name newBody (CTranslUnit decls annot) =
-  CTranslUnit (map replaceExt decls) annot
-  where
-    replaceExt (CFDefExt (CFunDef specs declr decls _ pos))
-      | declrName declr == Just name =
-          CFDefExt (CFunDef specs declr decls newBody pos)
-    replaceExt ext = ext
-
-extractFuncBody :: String -> CTranslUnit -> CStat
-extractFuncBody name (CTranslUnit decls _) =
-  fromMaybe (CCompound [] [] undefNode) (findBody decls)
-  where
-    findBody [] = Nothing
-    findBody (CFDefExt (CFunDef _ declr _ body _) : rest)
-      | declrName declr == Just name = Just body
-    findBody (_ : rest) = findBody rest
 
 --------------------------------------------------------------------------------
 -- Helper utilities
@@ -383,29 +262,3 @@ buildStateMembers fs =
     groupByType (x : xs) =
       let (same, rest) = span ((== show (fieldType x)) . show . fieldType) xs
        in (x : same) : groupByType rest
-
-mkFunDef :: String -> CTypeSpec -> CStat -> CFunDef
-mkFunDef name retType body =
-  CFunDef
-    [CTypeSpec retType]
-    (mkFunDeclr name)
-    []
-    body
-    undefNode
-
-mkFunDeclr :: String -> CDeclr
-mkFunDeclr name =
-  CDeclr
-    (Just (mkIdent name))
-    [CFunDeclr (Right ([mkStateParam "s"], False)) [] undefNode]
-    Nothing
-    []
-    undefNode
-
-mkStateParam :: String -> CDecl
-mkStateParam name =
-  CDecl
-    [CTypeSpec (CSUType (CStruct CStructTag (Just (mkIdent "state")) Nothing [] undefNode) undefNode)]
-    [ (Just (CDeclr (Just (mkIdent name)) [CPtrDeclr [] undefNode] Nothing [] undefNode), Nothing, Nothing)
-    ]
-    undefNode
