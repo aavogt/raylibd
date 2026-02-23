@@ -13,7 +13,7 @@ import Data.Data.Lens (biplate)
 import Data.Function (on)
 import Data.List (find, findIndex, mapAccumL, partition)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, mapMaybe, isNothing)
+import Data.Maybe (fromMaybe, mapMaybe, isNothing, catMaybes)
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
 import Control.Lens.Extras
@@ -48,7 +48,7 @@ buildStateSpec ast =
       initStmts = toInitStmts fields
       useRewrite = toUseRewrite fields
       hoistedNames = map fieldOrigName fields
-   in StateSpec {..}
+   in StateSpec {.. }
 
 -- Apply rewriting to the original AST: drop hoisted decls, split main, rewrite uses.
 rewriteOrig :: StateSpec -> CTranslUnit -> CTranslUnit
@@ -69,14 +69,12 @@ collectGlobalVars (CTranslUnit decls _) = [ r
         Just r <- [fieldFromDecl specs Nothing declr] ]
 
 -- ** `collectStaticLocals`
-
 collectStaticLocals :: CTranslUnit -> [StateField]
-collectStaticLocals tu = [ r
+collectStaticLocals tu = catMaybes [ fieldFromDecl specs (Just fn) declr
       | CFunDef _ (declrName -> Just fn) _ stmt _ <- tu ^.. template,
-          CBlockDecl (CDecl specs declrs _) <- stmt ^.. template,
+          CDecl specs declrs _ <- stmt ^.. template,
           isStaticSpec specs,
-          declr <- declrs,
-          Just r <- [fieldFromDecl specs (Just fn) declr] ]
+          declr <- declrs ]
 
 
 --------------------------------------------------------------------------------
