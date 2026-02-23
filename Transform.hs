@@ -48,7 +48,7 @@ buildStateSpec ast =
       initStmts = toInitStmts fields
       useRewrite = toUseRewrite fields
       hoistedNames = map fieldOrigName fields
-   in StateSpec {.. }
+   in StateSpec {..}
 
 -- Apply rewriting to the original AST: drop hoisted decls, split main, rewrite uses.
 rewriteOrig :: StateSpec -> CTranslUnit -> CTranslUnit
