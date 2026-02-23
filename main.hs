@@ -25,7 +25,7 @@ main = do
   Right from <- parseCFile (newGCC "gcc") (Just "/tmp") cflags mainc -- (initPos mainc)
   writeFile "ref/rl.ast" (show $ over template (const undefNode) from)
 
-  subbed <- substituteTemplate from <$> readFile "template.c"
+  subbed <- substituteTemplate from Nothing <$> readFile "template.c"
   writeFile "rl2.c" subbed
   putStrLn subbed
 

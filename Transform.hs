@@ -112,10 +112,11 @@ toUseRewrite =
           useExpr = mkMember (fieldName field)
         }
 
-substituteTemplate from template =
+substituteTemplate from prevFrom template =
   let spec = buildStateSpec from
+      prevSpec = buildStateSpec <$> prevFrom
       render x = show $ Language.C.pretty x
-      Just (Bodies { .. }) = getBodies spec from
+      Just (Bodies { .. }) = getBodies spec prevSpec from
       renderDecls = concatMap ((++";") . render)
   in template & lined %~ \case
     "//STRUCTBODY" -> renderDecls structBody
@@ -128,8 +129,8 @@ substituteTemplate from template =
 
 data Bodies = Bodies { initBody, stepBody  , reinitBody, uninitBody :: CStat, structBody :: [CDecl] }
 
-getBodies :: StateSpec -> CTranslUnit -> Maybe Bodies
-getBodies spec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
+getBodies :: StateSpec -> Maybe StateSpec -> CTranslUnit -> Maybe Bodies
+getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
   where
     splitExt (CFDefExt def)
       | declrName (funDeclr def) == Just "main" = splitMainDef def
@@ -149,7 +150,7 @@ getBodies spec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
               initBody = CCompound [] initItems' pos
               stepBody = CCompound [] updateItems pos
               uninitBody = CCompound [] postItems pos
-              reinitBody = CBreak pos
+              reinitBody = CCompound [] (map CBlockStmt (reinitStmts spec prevSpec)) pos
               structBody = buildStateMembers (fields spec)
            in Just (Bodies { .. })
         _ -> Nothing
@@ -176,6 +177,37 @@ getBodies spec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
        in all keepInit names
 
     funDeclr (CFunDef _ declr _ _ _) = declr
+
+reinitStmts :: StateSpec -> Maybe StateSpec -> [CStat]
+reinitStmts _ Nothing = []
+reinitStmts spec (Just prevSpec) =
+  toInitStmts (filter (initChanged prevSpec) (fields spec))
+
+initChanged :: StateSpec -> StateField -> Bool
+initChanged prevSpec field =
+  case (fieldInit field, lookupPrev field) of
+    (Just currInit, Just prevInit) ->
+      case (literalKey currInit, literalKey prevInit) of
+        (Just currKey, Just prevKey) -> currKey /= prevKey
+        _ -> False
+    _ -> False
+  where
+    prevMap =
+      Map.fromList
+        [ ((fieldOrigName f, fieldScope f), initVal)
+          | f <- fields prevSpec,
+            Just initVal <- [fieldInit f]
+        ]
+    lookupPrev f = Map.lookup (fieldOrigName f, fieldScope f) prevMap
+
+literalKey :: CInit -> Maybe String
+literalKey (CInitExpr (CConst c) _) =
+  case c of
+    CStrConst s _ -> Just ("str:" <> show s)
+    CIntConst i _ -> Just ("int:" <> show i)
+    CFloatConst f _ -> Just ("float:" <> show f)
+    _ -> Nothing
+literalKey _ = Nothing
 
 isWhile :: CBlockItem -> Bool
 isWhile (CBlockStmt CWhile {}) = True
