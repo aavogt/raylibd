@@ -34,13 +34,13 @@ main = do
       structBody = renderDecls (buildStateMembers (fields spec))
 
       initBody = render (extractFuncBody "Init" orig')
-      updateBody = render (extractFuncBody "Update" orig')
+      stepBody = render (extractFuncBody "Update" orig')
       uninitBody = render (extractFuncBody "Uninit" orig')
 
   subbed <- readFile "template.c" <&> lined %~ \case
     "//STRUCTBODY" -> structBody
     "//INITBODY" -> initBody
-    "//UPDATEBODY" -> updateBody
+    "//STEPBODY" -> stepBody
     "//UNINITBODY" -> uninitBody
     x -> x
 

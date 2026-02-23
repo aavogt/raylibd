@@ -15,8 +15,8 @@ void Init(struct state *s) {
 //INITBODY
 }
 
-bool Update(struct state *s) {
-//UPDATEBODY
+bool Step(struct state *s) {
+//STEPBODY
 }
 
 int Uninit(struct state *s) {
