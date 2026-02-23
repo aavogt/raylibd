@@ -44,11 +44,11 @@ buildStateSpec :: CTranslUnit -> StateSpec
 buildStateSpec ast =
   let globals = collectGlobalVars ast
       statics = collectStaticLocals ast
-      fs = toStateFields (globals <> statics)
-      inits = toInitStmts fs
-      rewrite = toUseRewrite fs
-      names = map fieldOrigName fs
-   in StateSpec fs inits rewrite names
+      fields = toStateFields (globals <> statics)
+      initStmts = toInitStmts fields
+      useRewrite = toUseRewrite fields
+      hoistedNames = map fieldOrigName fields
+   in StateSpec {..}
 
 -- Apply rewriting to the original AST: drop hoisted decls, split main, rewrite uses.
 rewriteOrig :: StateSpec -> CTranslUnit -> CTranslUnit
