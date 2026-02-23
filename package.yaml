@@ -1,0 +1,18 @@
+dependencies:
+    - base
+    - language-c
+    - cmdargs
+    - fsnotify
+    - pretty-show
+    - lens
+    - process
+    - containers
+
+default-extensions:
+  - RecordWildCards
+
+executable:
+  main:
+    main.hs
+  hs-source-dirs:
+    - .
