@@ -3,7 +3,6 @@ module Transform (substituteTemplate, buildStateSpec) where
 import Control.Lens
 import Control.Lens.Extras
 import Data.Data
-import Data.Data.Lens (biplate)
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
