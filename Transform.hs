@@ -1,20 +1,21 @@
--- The transformation rewrites an original C raylib app into a hot-reloadable shape by
--- (1) collecting globals + static locals into a state record,
--- (2) rewriting identifier uses to field access (s->field),
--- (3) splitting main into Init/Update/Uninit,
--- (4) splicing the rewritten parts into a text-based template
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
-module Transform (substituteTemplate) where
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ViewPatterns #-}
+
+module Transform (substituteTemplate, buildStateSpec) where
 
 import Control.Lens
+import Control.Lens.Extras
+import Data.Data
 import Data.Data.Lens (biplate)
 import Data.List
-import qualified Data.Map.Strict as Map
+import qualified Data.Map as M
 import Data.Maybe
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
-import Control.Lens.Extras
 
 data StateSpec = StateSpec
   { fields :: [StateField],
@@ -36,6 +37,7 @@ data UseRewrite = UseRewrite
     useScope :: Maybe String,
     useExpr :: CExpr
   }
+  deriving (Show)
 
 -- Collect globals + static locals and build derived rewrite info.
 buildStateSpec :: CTranslUnit -> StateSpec
@@ -48,26 +50,30 @@ buildStateSpec ast =
       hoistedNames = map fieldOrigName fields
    in StateSpec {..}
 
-
 --------------------------------------------------------------------------------
 -- Collection helpers
 --------------------------------------------------------------------------------
 
 collectGlobalVars :: CTranslUnit -> [StateField]
-collectGlobalVars (CTranslUnit decls _) = [ r
-      | CDeclExt (CDecl specs declrs _) <- decls,
-        not (isStaticSpec specs),
-        declr <- declrs,
-        Just r <- [fieldFromDecl specs Nothing declr] ]
+collectGlobalVars (CTranslUnit decls _) =
+  [ r
+    | CDeclExt (CDecl specs declrs _) <- decls,
+      not (isStaticSpec specs),
+      declr <- declrs,
+      Just r <- [fieldFromDecl specs Nothing declr]
+  ]
 
 -- ** `collectStaticLocals`
-collectStaticLocals :: CTranslUnit -> [StateField]
-collectStaticLocals tu = catMaybes [ fieldFromDecl specs (Just fn) declr
-      | CFunDef _ (declrName -> Just fn) _ stmt _ <- tu ^.. template,
-          CDecl specs declrs _ <- stmt ^.. template,
-          isStaticSpec specs,
-          declr <- declrs ]
 
+collectStaticLocals :: CTranslUnit -> [StateField]
+collectStaticLocals tu =
+  catMaybes
+    [ fieldFromDecl specs (Just fn) declr
+      | CFunDef _ (declrName -> Just fn) _ stmt _ <- tu ^.. template,
+        CDecl specs declrs _ <- stmt ^.. template,
+        isStaticSpec specs,
+        declr <- declrs
+    ]
 
 --------------------------------------------------------------------------------
 -- State derivation helpers
@@ -79,13 +85,13 @@ collectStaticLocals tu = catMaybes [ fieldFromDecl specs (Just fn) declr
 -- - Ensure unique names (rename on collision with a numeric suffix).
 toStateFields :: [StateField] -> [StateField]
 toStateFields fields0 =
-  snd $ mapAccumL rename Map.empty fields0
+  snd $ mapAccumL rename M.empty fields0
   where
     rename seen field =
       let base = fieldOrigName field
-          idx = Map.findWithDefault 0 base seen
+          idx = M.findWithDefault 0 base seen
           newName = if idx == 0 then base else base <> show idx
-          seen' = Map.insert base (idx + 1) seen
+          seen' = M.insert base (idx + 1) seen
        in (seen', field {fieldName = newName})
 
 toInitStmts :: [StateField] -> [CStat]
@@ -112,22 +118,29 @@ toUseRewrite =
           useExpr = mkMember (fieldName field)
         }
 
-substituteTemplate from prevFrom template =
-  let spec = buildStateSpec from
-      prevSpec = buildStateSpec <$> prevFrom
-      render x = show $ Language.C.pretty x
-      Just (Bodies { .. }) = getBodies spec prevSpec from
-      renderDecls = concatMap ((++";") . render)
-  in template & lined %~ \case
-    "//STRUCTBODY" -> renderDecls structBody
-    "//REINITBODY" -> render reinitBody
-    "//INITBODY" -> render initBody
-    "//STEPBODY" -> render stepBody
-    "//UNINITBODY" -> render uninitBody
-    x -> x
+instance Plated CExpr
 
+applyRewrites :: (Data a) => [UseRewrite] -> a -> a
+applyRewrites rewrites =
+  template %~ rewrite \case
+    CVar (Ident a b c) _ | Just (UseRewrite {useExpr}) <- find ((a ==) . useName) rewrites -> Just useExpr
+    _ -> Nothing
 
-data Bodies = Bodies { initBody, stepBody  , reinitBody, uninitBody :: CStat, structBody :: [CDecl] }
+substituteTemplate from spec prevSpec template =
+  let render x = show $ Language.C.pretty x
+      Just (Bodies {..}) = getBodies spec prevSpec from
+      renderDecls = concatMap ((++ ";") . render)
+   in template
+        & lined %~ \case
+          "//STRUCTBODY" -> renderDecls structBody
+          "//REINITBODY" -> render reinitBody
+          "//INITBODY" -> render initBody
+          "//STEPBODY" -> render stepBody
+          "//UNINITBODY" -> render uninitBody
+          x -> x
+
+data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: CStat, structBody :: [CDecl]}
+  deriving (Data)
 
 getBodies :: StateSpec -> Maybe StateSpec -> CTranslUnit -> Maybe Bodies
 getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
@@ -143,16 +156,16 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
               (initItems, updatePrefix) = partition keepInitItem preItems
               (loopCond, loopBodyItems) = extractWhile loopItem
               initItems' = initItems <> map CBlockStmt (initStmts spec)
-              updateItems =
+              stepItems =
                 updatePrefix
                   <> loopBodyItems
                   <> maybe [] (\cond -> [CBlockStmt (CReturn (Just cond) undefNode)]) loopCond
               initBody = CCompound [] initItems' pos
-              stepBody = CCompound [] updateItems pos
+              stepBody = CCompound [] stepItems pos
               uninitBody = CCompound [] postItems pos
               reinitBody = CCompound [] (map CBlockStmt (reinitStmts spec prevSpec)) pos
               structBody = buildStateMembers (fields spec)
-           in Just (Bodies { .. })
+           in Just (Bodies {..}) & applyRewrites (useRewrite spec)
         _ -> Nothing
 
     splitOnLastWhile items =
@@ -193,12 +206,12 @@ initChanged prevSpec field =
     _ -> False
   where
     prevMap =
-      Map.fromList
+      M.fromList
         [ ((fieldOrigName f, fieldScope f), initVal)
           | f <- fields prevSpec,
             Just initVal <- [fieldInit f]
         ]
-    lookupPrev f = Map.lookup (fieldOrigName f, fieldScope f) prevMap
+    lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
 literalKey :: CInit -> Maybe String
 literalKey (CInitExpr (CConst c) _) =

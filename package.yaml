@@ -3,10 +3,19 @@ dependencies:
     - language-c
     - cmdargs
     - fsnotify
-    - pretty-show
     - lens
-    - process
     - containers
+    - time
+    - directory
+    - filepath
+    - bytestring
+
+data-files:
+  - template.c
+  - main.c
+  - main_hot.c
+  - Makefile
+  - vendor/Makefile
 
 default-extensions:
   - RecordWildCards
