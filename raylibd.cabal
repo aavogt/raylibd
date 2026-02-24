@@ -1,0 +1,44 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.38.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           raylibd
+version:        0.0.0
+build-type:     Simple
+data-files:
+    main.c
+    template.c
+    main_hot.c
+    Makefile
+    vendor/Makefile
+
+executable raylibd
+  main-is: main.hs
+  other-modules:
+      Transform
+      Paths_raylibd
+  hs-source-dirs:
+      ./
+  default-extensions:
+      BlockArguments
+      DeriveDataTypeable
+      FlexibleInstances
+      LambdaCase
+      NamedFieldPuns
+      RecordWildCards
+      TupleSections
+      ViewPatterns
+  build-depends:
+      base
+    , bytestring
+    , cmdargs
+    , containers
+    , directory
+    , filepath
+    , fsnotify
+    , language-c
+    , lens
+    , time
+  default-language: Haskell2010

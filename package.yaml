@@ -11,14 +11,21 @@ dependencies:
     - bytestring
 
 data-files:
-  - template.c
   - main.c
+  - template.c
   - main_hot.c
   - Makefile
   - vendor/Makefile
 
 default-extensions:
+  - BlockArguments
+  - DeriveDataTypeable
+  - FlexibleInstances
+  - LambdaCase
+  - NamedFieldPuns
   - RecordWildCards
+  - TupleSections
+  - ViewPatterns
 
 executable:
   main:
