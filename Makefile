@@ -1,6 +1,8 @@
 CC       := gcc
-CFLAGS   := -fPIC -O2 -Wl,--export-dynamic 
-RAYLIB_A   := vendor/raylib/build/raylib/libraylib.a
+INCLUDES := -I/usr/local/include -I/usr/include -Ivendor/raylib/build/raylib -Ivendor/raygui/src
+CFLAGS   := -fPIC -O2 -Wl,--export-dynamic $(INCLUDES)
+RAYLIB_A := $(firstword $(wildcard /usr/local/lib/libraylib.a /usr/lib/libraylib.a) vendor/raylib/build/raylib/libraylib.a)
+RAYGUI_H := $(firstword $(wildcard /usr/local/include/raygui.h /usr/include/raygui.h))
 
 watch: main_hot dll.so
 	ulimit -v 1000000
@@ -19,14 +21,17 @@ dll.c: main.c
 	raylibd --once
 
 compile_commands.json:
-	bear -- $(CC) -Ivendor/raylib/build/raylib -Ivendor/raygui/src main.c $(RAYLIB_A) -lm -fsyntax-only
+	bear -- $(CC) $(CFLAGS) main.c -fsyntax-only
 
 clean:
 	rm -rf main_hot dll.so cabal.project.local cabal.project.local~ \
 				dist-newstyle dll.c dll.so main_hot raylibd.cabal
 
+$(RAYGUI_H):
+	$(MAKE) -Cvendor raygui
+
 $(RAYLIB_A):
-	make -Cvendor
+	$(MAKE) -Cvendor raylib/build/raylib/libraylib.a
 
 .ONESHELL: true
 .SHELL: bash
