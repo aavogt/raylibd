@@ -18,6 +18,9 @@ dll.so: dll.c
 dll.c: main.c
 	raylibd --once
 
+compile_commands.json:
+	bear -- $(CC) -Ivendor/raylib/build/raylib -Ivendor/raygui/src main.c $(RAYLIB_A) -lm
+
 clean:
 	rm -rf main_hot dll.so cabal.project.local cabal.project.local~ \
 				dist-newstyle dll.c dll.so main_hot raylibd.cabal
