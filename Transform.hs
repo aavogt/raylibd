@@ -19,7 +19,6 @@ data StateSpec = StateSpec
 
 data StateField = StateField
   { fieldType :: CTypeSpec,
-    fieldOrigName :: String,
     fieldName :: String,
     fieldInit :: Maybe CInit,
     fieldScope :: Maybe String
@@ -40,7 +39,7 @@ buildStateSpec ast =
       fields = toStateFields (globals <> statics)
       initStmts = toInitStmts fields
       useRewrite = toUseRewrite fields
-      hoistedNames = map fieldOrigName fields
+      hoistedNames = map fieldName fields
    in StateSpec {..}
 
 --------------------------------------------------------------------------------
@@ -81,7 +80,7 @@ toStateFields fields0 =
   snd $ mapAccumL rename M.empty fields0
   where
     rename seen field =
-      let base = fieldOrigName field
+      let base = fieldName field
           idx = M.findWithDefault 0 base seen
           newName = if idx == 0 then base else base <> show idx
           seen' = M.insert base (idx + 1) seen
@@ -106,7 +105,7 @@ toUseRewrite =
   where
     toRewrite field =
       UseRewrite
-        { useName = fieldOrigName field,
+        { useName = fieldName field,
           useScope = fieldScope field,
           useExpr = mkMember (fieldName field)
         }
@@ -242,7 +241,6 @@ fieldFromDecl specs scope (Just declr, initVal, _)
           Just
             StateField
               { fieldType = ty,
-                fieldOrigName = name,
                 fieldName = name,
                 fieldInit = initVal,
                 fieldScope = scope
