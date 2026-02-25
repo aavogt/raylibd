@@ -6,6 +6,8 @@ RAYGUI_H := $(firstword $(wildcard /usr/local/include/raygui.h /usr/include/rayg
 
 watch: main_hot dll.so
 	ulimit -v 1000000
+	set -m
+	trap 'pkill -P $$$$' EXIT
 	LD_LIBRARY_PATH=. ./main_hot &
 	raylibd &
 	ls dll.c | entr make dll.so
