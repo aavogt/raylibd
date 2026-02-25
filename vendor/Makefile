@@ -3,6 +3,9 @@ raylib/build/raylib/libraylib.a: raylib
 	cmake -DBUILD_EXAMPLES=OFF -Bbuild
 	make -Cbuild
 
+raygui.h:
+	curl --follow https://raw.githubusercontent.com/raysan5/raygui/refs/heads/master/src/raygui.h --output $@
+
 raygui.tar.gz:
 	curl --follow https://github.com/raysan5/raygui/archive/refs/heads/master.tar.gz --output $@
 
