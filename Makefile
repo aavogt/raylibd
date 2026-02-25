@@ -19,7 +19,7 @@ dll.c: main.c
 	raylibd --once
 
 compile_commands.json:
-	bear -- $(CC) -Ivendor/raylib/build/raylib -Ivendor/raygui/src main.c $(RAYLIB_A) -lm
+	bear -- $(CC) -Ivendor/raylib/build/raylib -Ivendor/raygui/src main.c $(RAYLIB_A) -lm -fsyntax-only
 
 clean:
 	rm -rf main_hot dll.so cabal.project.local cabal.project.local~ \
