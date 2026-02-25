@@ -1,0 +1,14 @@
+.cache/
+.ghc.environment.x86_64-linux-9.6.7
+.ghc.environmentCache
+cabal.project.local
+compile_commands.json
+dist-newstyle/
+dll.c
+dll.so
+main
+main_hot
+vendor/raygui.tar.gz
+vendor/raygui/
+vendor/raylib.tar.gz
+vendor/raylib/
