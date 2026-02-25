@@ -12,7 +12,8 @@ main_hot: $(RAYLIB_A) main_hot.c dll.c
 	$(CC) $(CFLAGS) -Wl,--whole-archive $(RAYLIB_A) -Wl,--no-whole-archive -lm -o $@ main_hot.c
 
 dll.so: dll.c
-	$(CC) $(CFLAGS) -DRL_SO_IMPL -shared -o $@ $^
+	$(CC) $(CFLAGS) -DRL_SO_IMPL -shared -o dll.so.2 $^
+	mv dll.so.2 $@
 
 dll.c: main.c
 	raylibd --once

@@ -5,16 +5,34 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
-const int MTIME_FRAMES = 30;
+const int MTIME_SKIP_FRAMES = 0;
 typedef struct {
   void *dl;
   VTable *api;
 } Plugin;
 Plugin p = {0};
 
-static time_t mtime(const char *p) {
+bool mtime_changed(const char *p) {
+  static struct timespec prev;
+  struct timespec cur;
+  static ulong lastns;
+  static bool have_prev = false;
   struct stat st;
-  return stat(p, &st) == 0 ? st.st_mtime : 0;
+
+  if (stat(p, &st))
+    return false;
+
+  cur = st.st_mtim;
+  if (have_prev) {
+    bool r = cur.tv_sec > prev.tv_sec ||
+             (cur.tv_sec == prev.tv_sec && cur.tv_nsec > prev.tv_nsec);
+    prev = cur;
+    return r;
+  } else {
+    have_prev = true;
+    prev = cur;
+    return true;
+  }
 }
 
 void plugin_load() {
@@ -44,15 +62,12 @@ int main(int argc, char **argv) {
   p.api->Init(&s);
 
   int frame = 0;
-  time_t last = mtime("dll.so");
   while (p.api->Step(&s)) {
-    if (frame++ >= MTIME_FRAMES) {
-      time_t t = mtime("dll.so");
-      if (t != last) {
+    if (frame++ >= MTIME_SKIP_FRAMES) {
+      if (mtime_changed("dll.so")) {
         printf("main_hot reloaded\n");
         plugin_unload();
         plugin_load();
-        last = mtime("dll.so");
 
         p.api->Reinit(&s);
       }
