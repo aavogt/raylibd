@@ -11,7 +11,7 @@ https://www.haskell.org/ghcup/install/
 
     raylibd init demo
     cd demo
-    make -j12 # downloads raylib into vendor/raylib/, and runs main_hot
+    make -j12 # downloads raygui&raylib into vendor/raylib/, and runs main_hot
 
 Inside the demo directory:
 
@@ -24,3 +24,10 @@ Inside the demo directory:
 
 raylibd compiles `main.c` to `dll.c`, which in turn is loaded by `main_hot`
 Save changes to `main.c` and you can usually see the changes right away.
+
+## TODO
+
+ - [ ] free functions are not copied to dll.c
+ - [ ] raylib functions cause parse errors, but I also can't parse raylib's headers with language-c
+ - [ ] skip constants
+ - [ ] fixed size arrays input is static int x[2] = {12, 34}, output includes s->x[0] = 12; s->x[1] = 34; also don't add the original decl to Step() to compile main_arrays.c
