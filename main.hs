@@ -4,7 +4,6 @@ import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Functor ((<&>))
 import Data.IORef
-import Data.Maybe
 import Language.C
 import Language.C.System.GCC
 import Language.C.System.Preprocess
