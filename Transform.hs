@@ -181,10 +181,10 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
            in Just (Bodies {..}) & applyRewrites (useRewrite spec)
         _ -> Nothing
 
-    splitOnLastWhile items = break isWhile (reverse items) & each %~ reverse
+    splitOnLastWhile items = break isWhile (reverse items)
       & \case
-          (a, b:cs) -> (a, Just b, cs)
-          (a, cs) -> (a, Nothing, cs)
+          (a, b:cs) -> (reverse cs, Just b, reverse a)
+          (a, cs) -> (reverse cs, Nothing, reverse a)
 
     extractWhile (Just (CBlockStmt (CWhile cond body _ _))) =
       (Just cond, compoundItems body)
