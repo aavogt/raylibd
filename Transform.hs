@@ -19,10 +19,12 @@ data StateSpec = StateSpec
 
 data StateField = StateField
   { fieldType :: CTypeSpec,
+    fieldOrigName :: String,
     fieldName :: String,
     fieldInit :: Maybe CInit,
     fieldScope :: Maybe String
   }
+  deriving (Show)
 
 data UseRewrite = UseRewrite
   { useName :: String,
@@ -39,7 +41,7 @@ buildStateSpec ast =
       fields = toStateFields (globals <> statics)
       initStmts = toInitStmts fields
       useRewrite = toUseRewrite fields
-      hoistedNames = map fieldName fields
+      hoistedNames = map fieldOrigName fields
    in StateSpec {..}
 
 --------------------------------------------------------------------------------
@@ -80,7 +82,7 @@ toStateFields fields0 =
   snd $ mapAccumL rename M.empty fields0
   where
     rename seen field =
-      let base = fieldName field
+      let base = fieldOrigName field
           idx = M.findWithDefault 0 base seen
           newName = if idx == 0 then base else base <> show idx
           seen' = M.insert base (idx + 1) seen
@@ -105,7 +107,7 @@ toUseRewrite =
   where
     toRewrite field =
       UseRewrite
-        { useName = fieldName field,
+        { useName = fieldOrigName field,
           useScope = fieldScope field,
           useExpr = mkMember (fieldName field)
         }
@@ -209,11 +211,11 @@ initChanged prevSpec field = fromMaybe False $ liftA2 cinitNE (fieldInit field) 
   where
     prevMap =
       M.fromList
-        [ ((fieldName f, fieldScope f), initVal)
+        [ ((fieldOrigName f, fieldScope f), initVal)
           | f <- fields prevSpec,
             Just initVal <- [fieldInit f]
         ]
-    lookupPrev f = M.lookup (fieldName f, fieldScope f) prevMap
+    lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
 cinitNE :: CInit -> CInit -> Bool
 cinitNE a b = literalKey a /= literalKey b
@@ -262,6 +264,7 @@ fieldFromDecl specs scope (Just declr, initVal, _)
           Just
             StateField
               { fieldType = ty,
+                fieldOrigName = name,
                 fieldName = name,
                 fieldInit = initVal,
                 fieldScope = scope
@@ -287,20 +290,8 @@ initToExpr ty (CInitList items _) =
   CCompoundLit (CDecl [CTypeSpec ty] [(Nothing, Nothing, Nothing)] undefNode) items undefNode
 
 buildStateMembers :: [StateField] -> [CDecl]
-buildStateMembers fs =
-  map buildDecl grouped
+buildStateMembers = map buildDecl
   where
-    grouped = groupByType fs
-
-    buildDecl fields' =
-      let ty = fieldType (head fields')
-          declrs = map buildDeclr fields'
-       in CDecl [CTypeSpec ty] declrs undefNode
-
-    buildDeclr field =
-      (Just (CDeclr (Just (mkIdent (fieldName field))) [] Nothing [] undefNode), Nothing, Nothing)
-
-    groupByType [] = []
-    groupByType (x : xs) =
-      let (same, rest) = span ((== show (fieldType x)) . show . fieldType) xs
-       in (x : same) : groupByType rest
+    buildDecl StateField { .. } =
+      let declr = (Just (CDeclr (Just (mkIdent fieldName)) [] Nothing [] undefNode), Nothing, Nothing)
+      in CDecl [CTypeSpec fieldType] [declr] undefNode
