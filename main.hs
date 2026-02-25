@@ -2,6 +2,7 @@ import Control.Concurrent
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
+import Data.Foldable
 import Data.Functor ((<&>))
 import Data.IORef
 import Language.C
@@ -10,11 +11,12 @@ import Language.C.System.Preprocess
 import Paths_raylibd
 import System.Console.CmdArgs
 import System.Directory
+import System.Exit
 import System.FSNotify
 import System.FilePath
 import System.IO
+import System.Process
 import Transform
-import System.Exit
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra :: [String], echo :: Bool, once :: Bool}
@@ -51,11 +53,14 @@ watch Init {..} = do
         e <- doesFileExist d
         when (not e || force) $ copyFile p d
   mapM_ copyData $ words "main.c main_hot.c Makefile vendor/Makefile"
+  for_ dest setCurrentDirectory
+  system "make compile_commands.json"
 watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
   let gcc = newGCC "gcc"
   dir <- takeDirectory <$> makeAbsolute inputmain
   let cppFlags = foldl addExtraOption (cppFile inputmain) $ "-MM" : cflags ++ cflags_extra
-  includes <- runPreprocessor gcc cppFlags <&> \case
+  includes <-
+    runPreprocessor gcc cppFlags <&> \case
       Left _exit -> [inputmain]
       Right bs -> map C8.unpack $ drop 1 $ C8.words bs
 
