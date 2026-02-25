@@ -1,4 +1,5 @@
-module Transform (substituteTemplate, buildStateSpec) where
+{-# LANGUAGE StandaloneDeriving #-}
+module Transform (substituteTemplate, Prev(..), buildStateSpec) where
 
 import Control.Lens
 import Control.Lens.Extras
@@ -160,15 +161,10 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
            in Just (Bodies {..}) & applyRewrites (useRewrite spec)
         _ -> Nothing
 
-    splitOnLastWhile items =
-      case findIndex isWhile (reverse items) of
-        Nothing -> (items, Nothing, [])
-        Just idxFromEnd ->
-          let idx = length items - idxFromEnd - 1
-              (pre, rest) = splitAt idx items
-           in case rest of
-                [] -> (items, Nothing, [])
-                (loopItem : post) -> (pre, Just loopItem, post)
+    splitOnLastWhile items = break isWhile (reverse items) & each %~ reverse
+      & \case
+          (a, b:cs) -> (a, Just b, cs)
+          (a, cs) -> (a, Nothing, cs)
 
     extractWhile (Just (CBlockStmt (CWhile cond body _ _))) =
       (Just cond, compoundItems body)
@@ -189,21 +185,18 @@ reinitStmts spec (Just prevSpec) =
   toInitStmts (filter (initChanged prevSpec) (fields spec))
 
 initChanged :: StateSpec -> StateField -> Bool
-initChanged prevSpec field =
-  case (fieldInit field, lookupPrev field) of
-    (Just currInit, Just prevInit) ->
-      case (literalKey currInit, literalKey prevInit) of
-        (Just currKey, Just prevKey) -> currKey /= prevKey
-        _ -> False
-    _ -> False
+initChanged prevSpec field = fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field)
   where
     prevMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), initVal)
+        [ ((fieldName f, fieldScope f), initVal)
           | f <- fields prevSpec,
             Just initVal <- [fieldInit f]
         ]
-    lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+    lookupPrev f = M.lookup (fieldName f, fieldScope f) prevMap
+
+cinitNE :: CInit -> CInit -> Bool
+cinitNE a b = literalKey a /= literalKey b
 
 literalKey :: CInit -> Maybe String
 literalKey (CInitExpr (CConst c) _) =
@@ -231,28 +224,21 @@ isStaticSpec = any isStatic
     isStatic (CStorageSpec (CStatic _)) = True
     isStatic _ = False
 
-declrHasFun :: CDeclr -> Bool
-declrHasFun (CDeclr _ derived _ _ _) =
-  any isFun derived
-  where
-    isFun CFunDeclr {} = True
-    isFun _ = False
+declrHasntFun :: CDeclr -> Bool
+declrHasntFun (CDeclr _ derived _ _ _) = null [ () | CFunDeclr{} <- derived ]
 
 declrName :: CDeclr -> Maybe String
 declrName (CDeclr (Just ident) _ _ _ _) = Just (identName ident)
 declrName _ = Nothing
 
-declTypeSpec :: [CDeclSpec] -> Maybe CTypeSpec
-declTypeSpec specs =
-  case [ts | CTypeSpec ts <- specs] of
-    (ts : _) -> Just ts
-    [] -> Nothing
+declTypeSpec :: [CDeclSpec] -> [CTypeSpec]
+declTypeSpec specs = [ts | CTypeSpec ts <- specs]
 
 fieldFromDecl :: [CDeclSpec] -> Maybe String -> (Maybe CDeclr, Maybe CInit, Maybe CExpr) -> Maybe StateField
 fieldFromDecl specs scope (Just declr, initVal, _)
-  | not (declrHasFun declr) =
+  | declrHasntFun declr =
       case (declTypeSpec specs, declrName declr) of
-        (Just ty, Just name) ->
+        (ty : _, Just name) ->
           Just
             StateField
               { fieldType = ty,
