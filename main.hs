@@ -61,7 +61,7 @@ watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
 
   includes_prop <- readFile inputmain <&> unlines . takeWhile ((== "#") . take 1) . lines
 
-  prev <- newIORef (Prev Nothing [])
+  prev <- newIORef (Prev Nothing)
   templatec <- getDataFileName "template.c"
   let reloadMainC = do
         result@(~(Right from)) <- parseCFile gcc (Just "/tmp") (cflags ++ cflags_extra) inputmain
