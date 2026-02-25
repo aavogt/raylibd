@@ -55,8 +55,8 @@ watch Init {..} = do
 watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
   let gcc = newGCC "gcc"
   dir <- takeDirectory <$> makeAbsolute inputmain
-  includes <-
-    runPreprocessor gcc (addExtraOption (cppFile inputmain) "-MM") <&> \case
+  let cppFlags = foldl addExtraOption (cppFile inputmain) $ "-MM" : cflags ++ cflags_extra
+  includes <- runPreprocessor gcc cppFlags <&> \case
       Left _exit -> [inputmain]
       Right bs -> map C8.unpack $ drop 1 $ C8.words bs
 
