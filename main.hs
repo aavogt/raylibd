@@ -62,7 +62,7 @@ watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
 
   includes_prop <- readFile inputmain <&> unlines . takeWhile ((== "#") . take 1) . lines
 
-  prevSpecRef <- newIORef Nothing
+  prev <- newIORef (Prev Nothing [])
   templatec <- getDataFileName "template.c"
   let reloadMainC = do
         result@(~(Right from)) <- parseCFile gcc (Just "/tmp") (cflags ++ cflags_extra) inputmain
@@ -70,8 +70,8 @@ watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
           Left e -> hPrint stderr result
           _ -> return ()
         let spec = buildStateSpec from
-        prevSpec <- atomicModifyIORef' prevSpecRef (Just spec,)
-        subbed <- substituteTemplate from spec prevSpec . (includes_prop ++) <$> readFile templatec
+        sub <- atomicModifyIORef' prev (substituteTemplate from spec)
+        subbed <- sub . (includes_prop ++) <$> readFile templatec
         writeFile outputmain subbed
         when echo $ putStrLn subbed
 

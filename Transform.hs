@@ -1,4 +1,3 @@
-{-# LANGUAGE StandaloneDeriving #-}
 module Transform (substituteTemplate, Prev(..), buildStateSpec) where
 
 import Control.Lens
@@ -9,6 +8,7 @@ import qualified Data.Map as M
 import Data.Maybe
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
+import qualified Data.Set as S
 
 data StateSpec = StateSpec
   { fields :: [StateField],
@@ -118,20 +118,41 @@ applyRewrites rewrites =
     CVar (Ident a b c) _ | Just (UseRewrite {useExpr}) <- find ((a ==) . useName) rewrites -> Just useExpr
     _ -> Nothing
 
-substituteTemplate from spec prevSpec template =
+newtype Prev = Prev { prevSpec :: Maybe StateSpec }
+
+substituteTemplate from spec Prev{.. } =
   let render x = show $ Language.C.pretty x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls = concatMap ((++ ";") . render)
-   in template
-        & lined %~ \case
-          "//STRUCTBODY" -> renderDecls structBody
+      mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
+      withTemplate =
+        lined %~ \case
+          "//STRUCTBODY" -> renderDecls (buildStateMembers mergedSF)
           "//REINITBODY" -> render reinitBody
           "//INITBODY" -> render initBody
           "//STEPBODY" -> render stepBody
           "//UNINITBODY" -> render uninitBody
           x -> x
+  in (Prev{ prevSpec = Just spec }, withTemplate)
 
-data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: CStat, structBody :: [CDecl]}
+-- FIXME
+-- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert
+-- - sortBy is probably better than this, possibly make sure old is always sorted
+-- - produce reinitBody here?
+mergeSF :: [StateField] -> [StateField] -> [StateField]
+mergeSF old new = expandedDummies ++ map snd notFound
+  where
+  oldDeclSet = S.fromList oldDecl
+  oldDecl = map show $ buildStateMembers old
+  newDecl = map show $ buildStateMembers new
+  (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
+  sameDeclSet = S.fromList $ map fst sameDecl
+  expandedDummies = zipWith3 dummyWhenMissing [0 .. ] old oldDecl
+  dummyWhenMissing i o@StateField{..} oStr
+      | oStr `S.member` sameDeclSet = o
+      | otherwise = StateField { fieldName = "dummy"++show i, fieldInit = Nothing, fieldScope = Nothing, ..}
+
+data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: CStat}
   deriving (Data)
 
 getBodies :: StateSpec -> Maybe StateSpec -> CTranslUnit -> Maybe Bodies
