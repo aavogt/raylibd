@@ -1,4 +1,5 @@
 #ifndef RAYLIBD
+#include "raygui.h"
 #include "raylib.h"
 #include <math.h>
 #include <stdbool.h>
