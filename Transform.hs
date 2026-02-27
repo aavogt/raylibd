@@ -208,10 +208,10 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
 --
 reinitStmts ::  Maybe StateSpec -> StateSpec -> [CStat]
 reinitStmts Nothing _ = []
-reinitStmts (Just prevSpec) spec = traceShow (prevSpec, spec) $
+reinitStmts (Just prevSpec) spec =
   toInitStmts [ field |
       field <- fields spec,
-      fromMaybe True $ liftA2 cinitNE (fieldInit field) (lookupPrev field) ]
+      fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field) ]
   where
     prevMap =
       M.fromList
