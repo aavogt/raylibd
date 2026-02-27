@@ -9,6 +9,7 @@ import Data.Maybe
 import Language.C hiding (mkIdent)
 import Language.C.Data.Ident hiding (mkIdent)
 import qualified Data.Set as S
+import Debug.Trace
 
 data StateSpec = StateSpec
   { fields :: [StateField],
@@ -16,6 +17,7 @@ data StateSpec = StateSpec
     useRewrite :: [UseRewrite],
     hoistedNames :: [String]
   }
+  deriving (Show)
 
 data StateField = StateField
   { fieldType :: CTypeSpec,
