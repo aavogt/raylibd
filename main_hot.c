@@ -3,7 +3,15 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
+
+#define MIN(a, b)                                                              \
+  ({                                                                           \
+    __typeof__(a) _a = (a);                                                    \
+    __typeof__(b) _b = (b);                                                    \
+    _a < _b ? _a : _b;                                                         \
+  })
 
 const int MTIME_SKIP_FRAMES = 0;
 typedef struct {
@@ -56,26 +64,39 @@ static void plugin_unload() {
 }
 
 int main(int argc, char **argv) {
-  struct state s = {0};
-
   plugin_load();
-  p.api->Init(&s);
+
+  unsigned long capacity = 2 * p.api->size;
+  struct state *s = aligned_alloc(p.api->align, capacity);
+  p.api->Init(s);
 
   int frame = 0;
-  while (p.api->Step(&s)) {
+  while (p.api->Step(s)) {
     if (frame++ >= MTIME_SKIP_FRAMES) {
       if (mtime_changed("dll.so")) {
         printf("main_hot reloaded\n");
+
+        Plugin q = p;
         plugin_unload();
         plugin_load();
 
-        p.api->Reinit(&s);
+        if (q.api->align != p.api->align || p.api->size >= capacity) {
+          unsigned long capacity_prev = capacity;
+          capacity = p.api->size * 2;
+          printf("growing state from %ld to %ld \n", capacity_prev, capacity);
+          void *t = aligned_alloc(p.api->align, capacity);
+          memcpy(t, s, MIN(p.api->size, q.api->size));
+          p.api->Reinit(s, t);
+          s = t;
+          free(s);
+        } else
+          p.api->Reinit(NULL, s);
       }
       frame = 0;
     }
   }
 
-  p.api->Uninit(&s);
+  p.api->Uninit(s);
   plugin_unload();
   return 0;
 }

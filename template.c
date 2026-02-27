@@ -5,13 +5,14 @@ struct state {
 void Init(struct state *c);
 bool Step(struct state *s);
 int Uninit(struct state *s);
-void Reinit(struct state *s);
+void Reinit(struct state *s, struct state *t);
 
 typedef struct {
   void (*Init)(struct state *);
   bool (*Step)(struct state *);
   int (*Uninit)(struct state *);
-  void (*Reinit)(struct state *);
+  void (*Reinit)(struct state *, struct state *);
+  unsigned long size, align;
 } VTable;
 VTable PLUGIN;
 
@@ -21,7 +22,7 @@ void Init(struct state *s) {
 //INITBODY
 }
 
-void Reinit(struct state *s) {
+void Reinit(struct state *s, struct state *t) {
 //REINITBODY
 }
 
@@ -39,5 +40,5 @@ int Uninit(struct state *s) {
 }
 
 
-VTable PLUGIN = (VTable) { &Init, &Step, &Uninit, &Reinit };
+VTable PLUGIN = (VTable) { &Init, &Step, &Uninit, &Reinit, sizeof(struct state), _Alignof(struct state) };
 #endif
