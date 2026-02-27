@@ -180,7 +180,7 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
               initBody = CCompound [] initItems' pos
               stepBody = CCompound [] stepItems pos
               uninitBody = CCompound [] postItems pos
-              reinitBody = CCompound [] (map CBlockStmt (reinitStmts spec prevSpec)) pos
+              reinitBody = CCompound [] (map CBlockStmt (reinitStmts prevSpec spec)) pos
               structBody = buildStateMembers (fields spec)
            in Just (Bodies {..}) & applyRewrites (useRewrite spec)
         _ -> Nothing
@@ -203,13 +203,15 @@ getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe split
 
     funDeclr (CFunDef _ declr _ _ _) = declr
 
-reinitStmts :: StateSpec -> Maybe StateSpec -> [CStat]
-reinitStmts _ Nothing = []
-reinitStmts spec (Just prevSpec) =
-  toInitStmts (filter (initChanged prevSpec) (fields spec))
-
-initChanged :: StateSpec -> StateField -> Bool
-initChanged prevSpec field = fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field)
+-- | reinitStmts s t is the body of Reinit(state *s, state *t)
+-- s previous, t new
+--
+reinitStmts ::  Maybe StateSpec -> StateSpec -> [CStat]
+reinitStmts Nothing _ = []
+reinitStmts (Just prevSpec) spec = traceShow (prevSpec, spec) $
+  toInitStmts [ field |
+      field <- fields spec,
+      fromMaybe True $ liftA2 cinitNE (fieldInit field) (lookupPrev field) ]
   where
     prevMap =
       M.fromList
@@ -220,16 +222,14 @@ initChanged prevSpec field = fromMaybe False $ liftA2 cinitNE (fieldInit field) 
     lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
 cinitNE :: CInit -> CInit -> Bool
-cinitNE a b = literalKey a /= literalKey b
+cinitNE (CInitExpr (CConst a) _) (CInitExpr (CConst b) _) = not (cinitEQ a b)
+cinitNE _ _ = False
 
-literalKey :: CInit -> Maybe String
-literalKey (CInitExpr (CConst c) _) =
-  case c of
-    CStrConst s _ -> Just ("str:" <> show s)
-    CIntConst i _ -> Just ("int:" <> show i)
-    CFloatConst f _ -> Just ("float:" <> show f)
-    _ -> Nothing
-literalKey _ = Nothing
+cinitEQ :: CConst -> CConst -> Bool
+cinitEQ (CStrConst s _) (CStrConst t _) = s == t
+cinitEQ (CIntConst s _) (CIntConst t _) = s == t
+cinitEQ (CFloatConst s _) (CFloatConst t _) = s == t
+cinitEQ _ _ = False
 
 isWhile :: CBlockItem -> Bool
 isWhile (CBlockStmt CWhile {}) = True
