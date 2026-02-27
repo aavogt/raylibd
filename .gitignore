@@ -12,3 +12,4 @@ vendor/raygui.tar.gz
 vendor/raygui/
 vendor/raylib.tar.gz
 vendor/raylib/
+flake.lock
