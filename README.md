@@ -27,6 +27,8 @@ Save changes to `main.c` and you can usually see the changes right away.
 
 ## TODO
 
+ - [ ] remove original variable declarations?
+ - [ ] #line pragmas
  - [ ] free functions are not copied to dll.c
  - [ ] raylib functions cause parse errors, but I also can't parse raylib's headers with language-c
  - [ ] skip constants
