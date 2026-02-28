@@ -55,8 +55,7 @@ watch Init {..} = do
   mapM_ copyData $ words "main.c main_hot.c Makefile vendor/Makefile"
   for_ dest setCurrentDirectory
   system "make compile_commands.json"
-watch Raylibd {..} = withManagerConf defaultConfig \mgr -> do
-  let gcc = newGCC "gcc"
+watch Raylibd {..} = withManagerConf defaultConfig{ confDebounce = Debounce 0.1 }  \mgr -> do
   dir <- takeDirectory <$> makeAbsolute inputmain
   let cppFlags = foldl addExtraOption (cppFile inputmain) $ "-MM" : cflags ++ cflags_extra
   includes <-

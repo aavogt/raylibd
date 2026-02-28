@@ -39,6 +39,7 @@ executable raylibd
     , filepath
     , fsnotify
     , language-c
+    , fsnotify <0.4
     , lens
     , process
     , time

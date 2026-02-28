@@ -2,7 +2,7 @@ dependencies:
     - base
     - language-c
     - cmdargs
-    - fsnotify
+    - fsnotify < 0.4
     - lens
     - containers
     - time
