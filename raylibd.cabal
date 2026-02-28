@@ -27,8 +27,11 @@ executable raylibd
       FlexibleInstances
       LambdaCase
       NamedFieldPuns
+      PatternSynonyms
+      QuasiQuotes
       RecordWildCards
       TupleSections
+      ViewPatterns
       ViewPatterns
   build-depends:
       base
@@ -37,10 +40,12 @@ executable raylibd
     , containers
     , directory
     , filepath
-    , fsnotify
-    , language-c
     , fsnotify <0.4
+    , language-c-quote
     , lens
+    , mainland-pretty
+    , pretty-show
     , process
+    , srcloc
     , time
   default-language: Haskell2010

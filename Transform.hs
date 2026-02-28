@@ -1,29 +1,39 @@
-module Transform (substituteTemplate, Prev(..), buildStateSpec) where
+module Transform (substituteTemplate, Prev (..), buildStateSpec) where
 
-import Control.Lens
+import Control.Lens hiding (Const)
 import Control.Lens.Extras
 import Data.Data
 import Data.List
+import Data.Loc (noLoc)
 import qualified Data.Map as M
 import Data.Maybe
-import Language.C hiding (mkIdent)
-import Language.C.Data.Ident hiding (mkIdent)
 import qualified Data.Set as S
-import Debug.Trace
+import Language.C hiding (mkIdent)
+import Language.C.Quote.C
+import Text.PrettyPrint.Mainland
+import Text.PrettyPrint.Mainland.Class (ppr)
+import Text.Show.Pretty (pPrint, ppShow)
+
+pattern Fun id block <-
+  ( \case
+      Func _ id _ _ block _ -> (identName id, block)
+      OldFunc _ id _ _ _ block _ -> (identName id, block) ->
+      (id, block)
+    )
 
 data StateSpec = StateSpec
   { fields :: [StateField],
-    initStmts :: [CStat],
+    initStmts :: [Stm],
     useRewrite :: [UseRewrite],
     hoistedNames :: [String]
   }
   deriving (Show)
 
 data StateField = StateField
-  { fieldType :: CTypeSpec,
+  { fieldType :: TypeSpec,
     fieldOrigName :: String,
     fieldName :: String,
-    fieldInit :: Maybe CInit,
+    fieldInit :: Maybe Initializer,
     fieldScope :: Maybe String
   }
   deriving (Show)
@@ -31,12 +41,12 @@ data StateField = StateField
 data UseRewrite = UseRewrite
   { useName :: String,
     useScope :: Maybe String,
-    useExpr :: CExpr
+    useExpr :: Exp
   }
   deriving (Show)
 
 -- Collect globals + static locals and build derived rewrite info.
-buildStateSpec :: CTranslUnit -> StateSpec
+buildStateSpec :: [Definition] -> StateSpec
 buildStateSpec ast =
   let globals = collectGlobalVars ast
       statics = collectStaticLocals ast
@@ -50,25 +60,25 @@ buildStateSpec ast =
 -- Collection helpers
 --------------------------------------------------------------------------------
 
-collectGlobalVars :: CTranslUnit -> [StateField]
-collectGlobalVars (CTranslUnit decls _) =
-  [ r
-    | CDeclExt (CDecl specs declrs _) <- decls,
+collectGlobalVars :: [Definition] -> [StateField]
+collectGlobalVars decls =
+  [ field
+    | DecDef (InitGroup specs _ inits _) _ <- decls,
       not (isStaticSpec specs),
-      declr <- declrs,
-      Just r <- [fieldFromDecl specs Nothing declr]
+      initDecl <- inits,
+      Just field <- [fieldFromDecl specs Nothing initDecl]
   ]
 
 -- ** `collectStaticLocals`
 
-collectStaticLocals :: CTranslUnit -> [StateField]
+collectStaticLocals :: [Definition] -> [StateField]
 collectStaticLocals tu =
   catMaybes
-    [ fieldFromDecl specs (Just fn) declr
-      | CFunDef _ (declrName -> Just fn) _ stmt _ <- tu ^.. template,
-        CDecl specs declrs _ <- stmt ^.. template,
+    [ fieldFromDecl specs (Just fn) initDecl
+      | FuncDef (Fun fn items) _ <- tu ^.. template,
+        InitGroup specs _ inits _ <- items ^.. template,
         isStaticSpec specs,
-        declr <- declrs
+        initDecl <- inits
     ]
 
 --------------------------------------------------------------------------------
@@ -90,18 +100,18 @@ toStateFields fields0 =
           seen' = M.insert base (idx + 1) seen
        in (seen', field {fieldName = newName})
 
-toInitStmts :: [StateField] -> [CStat]
+toInitStmts :: [StateField] -> [Stm]
 toInitStmts =
   mapMaybe toInit
   where
     toInit field =
-      (\fInit -> CExpr (Just (mkAssign field fInit)) undefNode) <$> fieldInit field
+      (\fInit -> Exp (Just (mkAssign field fInit)) noLoc) <$> fieldInit field
     mkAssign field initVal =
-      CAssign
-        CAssignOp
+      Assign
         (mkMember (fieldName field))
+        JustAssign
         (initToExpr (fieldType field) initVal)
-        undefNode
+        noLoc
 
 toUseRewrite :: [StateField] -> [UseRewrite]
 toUseRewrite =
@@ -114,18 +124,18 @@ toUseRewrite =
           useExpr = mkMember (fieldName field)
         }
 
-instance Plated CExpr
+instance Plated Exp
 
 applyRewrites :: (Data a) => [UseRewrite] -> a -> a
 applyRewrites rewrites =
   template %~ rewrite \case
-    CVar (Ident a b c) _ | Just (UseRewrite {useExpr}) <- find ((a ==) . useName) rewrites -> Just useExpr
+    Var (Id a _) _ | Just (UseRewrite {useExpr}) <- find ((a ==) . useName) rewrites -> Just useExpr
     _ -> Nothing
 
-newtype Prev = Prev { prevSpec :: Maybe StateSpec }
+newtype Prev = Prev {prevSpec :: Maybe StateSpec}
 
-substituteTemplate from spec Prev{.. } =
-  let render x = show $ Language.C.pretty x
+substituteTemplate from spec Prev {..} =
+  let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls = concatMap ((++ ";") . render)
       mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
@@ -137,7 +147,7 @@ substituteTemplate from spec Prev{.. } =
           "//STEPBODY" -> render stepBody
           "//UNINITBODY" -> render uninitBody
           x -> x
-  in (Prev{ prevSpec = Just spec }, withTemplate)
+   in (Prev {prevSpec = Just spec}, withTemplate)
 
 -- FIXME
 -- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert
@@ -146,72 +156,68 @@ substituteTemplate from spec Prev{.. } =
 mergeSF :: [StateField] -> [StateField] -> [StateField]
 mergeSF old new = expandedDummies ++ map snd notFound
   where
-  oldDeclSet = S.fromList oldDecl
-  oldDecl = map show $ buildStateMembers old
-  newDecl = map show $ buildStateMembers new
-  (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
-  sameDeclSet = S.fromList $ map fst sameDecl
-  expandedDummies = zipWith3 dummyWhenMissing [0 .. ] old oldDecl
-  dummyWhenMissing i o@StateField{..} oStr
+    oldDeclSet = S.fromList oldDecl
+    oldDecl = map show $ buildStateMembers old
+    newDecl = map show $ buildStateMembers new
+    (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
+    sameDeclSet = S.fromList $ map fst sameDecl
+    expandedDummies = zipWith3 dummyWhenMissing [0 ..] old oldDecl
+    dummyWhenMissing i o@StateField {..} oStr
       | oStr `S.member` sameDeclSet = o
-      | otherwise = StateField { fieldName = "dummy"++show i, fieldInit = Nothing, fieldScope = Nothing, ..}
+      | otherwise = StateField {fieldName = "dummy" ++ show i, fieldInit = Nothing, fieldScope = Nothing, ..}
 
-data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: CStat}
+data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: Stm}
   deriving (Data)
 
-getBodies :: StateSpec -> Maybe StateSpec -> CTranslUnit -> Maybe Bodies
-getBodies spec prevSpec (CTranslUnit decls annot) = listToMaybe $ mapMaybe splitExt decls
+getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
+getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
   where
-    splitExt (CFDefExt def)
-      | declrName (funDeclr def) == Just "main" = splitMainDef def
-    splitExt ext = Nothing
+    splitMainDef (FuncDef (Fun "main" items) _) = withItems items
+    splitMainDef _ = Nothing
 
-    splitMainDef (CFunDef _ _ _ stmt _) =
-      case stmt of
-        CCompound _ items pos ->
-          let (preItems, loopItem, postItems) = splitOnLastWhile items
-              (initItems, updatePrefix) = partition keepInitItem preItems
-              (loopCond, loopBodyItems) = extractWhile loopItem
-              initItems' = initItems <> map CBlockStmt (initStmts spec)
-              stepItems =
-                updatePrefix
-                  <> loopBodyItems
-                  <> maybe [] (\cond -> [CBlockStmt (CReturn (Just cond) undefNode)]) loopCond
-              initBody = CCompound [] initItems' pos
-              stepBody = CCompound [] stepItems pos
-              uninitBody = CCompound [] postItems pos
-              reinitBody = CCompound [] (map CBlockStmt (reinitStmts prevSpec spec)) pos
-              structBody = buildStateMembers (fields spec)
-           in Just (Bodies {..}) & applyRewrites (useRewrite spec)
-        _ -> Nothing
+    withItems items =
+      let (preItems, loopItem, postItems) = splitOnLastWhile items
+          (initItems, updatePrefix) = partition keepInitItem preItems
+          (loopCond, loopBodyItems) = extractWhile loopItem
+          initItems' = initItems <> map BlockStm (initStmts spec)
+          stepItems =
+            updatePrefix
+              <> loopBodyItems
+              <> maybe [] (\cond -> [BlockStm (Return (Just cond) noLoc)]) loopCond
+          initBody = Block initItems' noLoc
+          stepBody = Block stepItems noLoc
+          uninitBody = Block postItems noLoc
+          reinitBody = Block (map BlockStm (reinitStmts prevSpec spec)) noLoc
+          structBody = buildStateMembers (fields spec)
+       in Just (Bodies {..}) & applyRewrites (useRewrite spec)
 
-    splitOnLastWhile items = break isWhile (reverse items)
-      & \case
-          (a, b:cs) -> (reverse cs, Just b, reverse a)
+    splitOnLastWhile items =
+      break isWhile (reverse items)
+        & \case
+          (a, b : cs) -> (reverse cs, Just b, reverse a)
           (a, cs) -> (reverse cs, Nothing, reverse a)
 
-    extractWhile (Just (CBlockStmt (CWhile cond body _ _))) =
+    extractWhile (Just (BlockStm (While cond body _))) =
       (Just cond, compoundItems body)
     extractWhile _ = (Nothing, [])
 
-    compoundItems (CCompound _ items _) = items
-    compoundItems stmt = [CBlockStmt stmt]
+    compoundItems (Block items _) = items
+    compoundItems stmt = [BlockStm stmt]
 
     keepInitItem item =
-      let names = map identName (toListOf (biplate :: Traversal' CBlockItem Ident) item)
+      let names = map identName (toListOf biplate item)
        in all keepInit names
-
-    funDeclr (CFunDef _ declr _ _ _) = declr
 
 -- | reinitStmts s t is the body of Reinit(state *s, state *t)
 -- s previous, t new
---
-reinitStmts ::  Maybe StateSpec -> StateSpec -> [CStat]
+reinitStmts :: Maybe StateSpec -> StateSpec -> [Stm]
 reinitStmts Nothing _ = []
 reinitStmts (Just prevSpec) spec =
-  toInitStmts [ field |
-      field <- fields spec,
-      fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field) ]
+  toInitStmts
+    [ field
+      | field <- fields spec,
+        fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field)
+    ]
   where
     prevMap =
       M.fromList
@@ -221,18 +227,19 @@ reinitStmts (Just prevSpec) spec =
         ]
     lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
-cinitNE :: CInit -> CInit -> Bool
-cinitNE (CInitExpr (CConst a) _) (CInitExpr (CConst b) _) = not (cinitEQ a b)
+cinitNE :: Initializer -> Initializer -> Bool
+cinitNE (ExpInitializer (Const a _) _) (ExpInitializer (Const b _) _) = not (cinitEQ a b)
 cinitNE _ _ = False
 
-cinitEQ :: CConst -> CConst -> Bool
-cinitEQ (CStrConst s _) (CStrConst t _) = s == t
-cinitEQ (CIntConst s _) (CIntConst t _) = s == t
-cinitEQ (CFloatConst s _) (CFloatConst t _) = s == t
+cinitEQ :: Const -> Const -> Bool
+cinitEQ (StringConst s _ _) (StringConst t _ _) = s == t
+cinitEQ (CharConst s _ _) (CharConst t _ _) = s == t
+cinitEQ (IntConst s _ _ _) (IntConst t _ _ _) = s == t
+cinitEQ (FloatConst s _ _) (FloatConst t _ _) = s == t
 cinitEQ _ _ = False
 
-isWhile :: CBlockItem -> Bool
-isWhile (CBlockStmt CWhile {}) = True
+isWhile :: BlockItem -> Bool
+isWhile (BlockStm (While {})) = True
 isWhile _ = False
 
 --------------------------------------------------------------------------------
@@ -242,28 +249,41 @@ isWhile _ = False
 keepInit :: String -> Bool
 keepInit _ = True
 
-isStaticSpec :: [CDeclSpec] -> Bool
-isStaticSpec = any isStatic
-  where
-    isStatic (CStorageSpec (CStatic _)) = True
-    isStatic _ = False
+test = do
+  let fn = [cunit| void f() { while (true) { static int x = 0; } } |]
+  pPrint fn
+  pPrint $ collectStaticLocals fn
 
-declrHasntFun :: CDeclr -> Bool
-declrHasntFun (CDeclr _ derived _ _ _) = null [ () | CFunDeclr{} <- derived ]
+isStaticSpec :: DeclSpec -> Bool
+isStaticSpec (DeclSpec storage _ _ _) =
+  isJust $
+    find
+      ( \case
+          Tstatic {} -> True
+          _ -> False
+      )
+      storage
+isStaticSpec _ = False
 
-declrName :: CDeclr -> Maybe String
-declrName (CDeclr (Just ident) _ _ _ _) = Just (identName ident)
-declrName _ = Nothing
+declrHasntFun :: Decl -> Bool
+declrHasntFun (DeclRoot _) = True
+declrHasntFun (Ptr _ decl _) = declrHasntFun decl
+declrHasntFun (Array _ _ decl _) = declrHasntFun decl
+declrHasntFun (Proto {}) = False
+declrHasntFun (OldProto {}) = False
+declrHasntFun (BlockPtr _ decl _) = declrHasntFun decl
+declrHasntFun (AntiTypeDecl _ _) = True
 
-declTypeSpec :: [CDeclSpec] -> [CTypeSpec]
-declTypeSpec specs = [ts | CTypeSpec ts <- specs]
+declTypeSpec :: DeclSpec -> TypeSpec
+declTypeSpec (DeclSpec _ _ ty _) = ty
+declTypeSpec _ = Tvoid noLoc
 
-fieldFromDecl :: [CDeclSpec] -> Maybe String -> (Maybe CDeclr, Maybe CInit, Maybe CExpr) -> Maybe StateField
-fieldFromDecl specs scope (Just declr, initVal, _)
-  | declrHasntFun declr =
-      case (declTypeSpec specs, declrName declr) of
-        (ty : _, Just name) ->
-          Just
+fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe StateField
+fieldFromDecl specs scope (Init ident decl _ initVal _ _)
+  | declrHasntFun decl =
+      let ty = declTypeSpec specs
+          name = identName ident
+       in Just
             StateField
               { fieldType = ty,
                 fieldOrigName = name,
@@ -271,29 +291,27 @@ fieldFromDecl specs scope (Just declr, initVal, _)
                 fieldInit = initVal,
                 fieldScope = scope
               }
-        _ -> Nothing
 fieldFromDecl _ _ _ = Nothing
 
-identName :: Ident -> String
-identName (Ident name _ _) = name
+identName :: Id -> String
+identName (Id name _) = name
 
-mkIdent :: String -> Ident
-mkIdent name = Ident name 0 undefNode
+mkIdent :: String -> Id
+mkIdent name = Id name noLoc
 
-mkVar :: String -> CExpr
-mkVar name = CVar (mkIdent name) undefNode
+mkMember :: String -> Exp
+mkMember name = [cexp| s->$id:name |]
 
-mkMember :: String -> CExpr
-mkMember name = CMember (mkVar "s") (mkIdent name) True undefNode
+initToExpr :: TypeSpec -> Initializer -> Exp
+initToExpr _ (ExpInitializer expr _) = expr
+initToExpr ty (CompoundInitializer items _) =
+  CompoundLit (Type (DeclSpec [] [] ty noLoc) (DeclRoot noLoc) noLoc) items noLoc
+initToExpr _ _ = Const (IntConst "0" Signed 0 noLoc) noLoc
 
-initToExpr :: CTypeSpec -> CInit -> CExpr
-initToExpr _ (CInitExpr expr _) = expr
-initToExpr ty (CInitList items _) =
-  CCompoundLit (CDecl [CTypeSpec ty] [(Nothing, Nothing, Nothing)] undefNode) items undefNode
-
-buildStateMembers :: [StateField] -> [CDecl]
+buildStateMembers :: [StateField] -> [InitGroup]
 buildStateMembers = map buildDecl
   where
-    buildDecl StateField { .. } =
-      let declr = (Just (CDeclr (Just (mkIdent fieldName)) [] Nothing [] undefNode), Nothing, Nothing)
-      in CDecl [CTypeSpec fieldType] [declr] undefNode
+    buildDecl StateField {..} =
+      let declSpec = DeclSpec [] [] fieldType noLoc
+          initDecl = Init (mkIdent fieldName) (DeclRoot noLoc) Nothing Nothing [] noLoc
+       in InitGroup declSpec [] [initDecl] noLoc

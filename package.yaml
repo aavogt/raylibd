@@ -1,6 +1,5 @@
 dependencies:
     - base
-    - language-c
     - cmdargs
     - fsnotify < 0.4
     - lens
@@ -10,6 +9,10 @@ dependencies:
     - filepath
     - bytestring
     - process
+    - language-c-quote
+    - mainland-pretty
+    - srcloc
+    - pretty-show
 
 data-files:
   - main.c
@@ -24,9 +27,13 @@ default-extensions:
   - FlexibleInstances
   - LambdaCase
   - NamedFieldPuns
+  - PatternSynonyms
+  - QuasiQuotes
   - RecordWildCards
   - TupleSections
   - ViewPatterns
+  - ViewPatterns
+
 
 executable:
   main:
