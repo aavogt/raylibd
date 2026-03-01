@@ -87,10 +87,10 @@ int main(int argc, char **argv) {
           void *t = aligned_alloc(p.api->align, capacity);
           memcpy(t, s, MIN(p.api->size, q.api->size));
           p.api->Reinit(s, t);
-          s = t;
           free(s);
+          s = t;
         } else
-          p.api->Reinit(NULL, s);
+          p.api->Reinit(s, NULL);
       }
       frame = 0;
     }

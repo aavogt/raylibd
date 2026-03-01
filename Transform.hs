@@ -34,7 +34,8 @@ data StateField = StateField
     fieldOrigName :: String,
     fieldName :: String,
     fieldInit :: Maybe Initializer,
-    fieldScope :: Maybe String
+    fieldScope :: Maybe String,
+    fieldArraySize :: [Const]
   }
   deriving (Show)
 
@@ -102,15 +103,33 @@ toStateFields fields0 =
 
 toInitStmts :: [StateField] -> [Stm]
 toInitStmts =
-  mapMaybe toInit
+  concatMap toInit
   where
     toInit field =
-      (\fInit -> Exp (Just (mkAssign field fInit)) noLoc) <$> fieldInit field
+      case fieldInit field of
+        Nothing -> []
+        Just initVal -> buildInit field initVal
+
+    buildInit field initVal =
+      case mapM constToArrayLen (fieldArraySize field) of
+        Just [len] ->
+          [ Exp (Just (mkAssignIndex field idx initVal)) noLoc
+            | idx <- [0 .. len - 1]
+          ]
+        Nothing -> [Exp (Just (mkAssign field initVal)) noLoc]
+
     mkAssign field initVal =
       Assign
         (mkMember (fieldName field))
         JustAssign
         (initToExpr (fieldType field) initVal)
+        noLoc
+
+    mkAssignIndex field idx initVal =
+      Assign
+        (mkMemberIndex (fieldName field) idx)
+        JustAssign
+        (initExprAt idx initVal)
         noLoc
 
 toUseRewrite :: [StateField] -> [UseRewrite]
@@ -137,8 +156,8 @@ newtype Prev = Prev {prevSpec :: Maybe StateSpec}
 substituteTemplate from spec Prev {..} =
   let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
-      renderDecls = concatMap ((++ ";") . render)
-      mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
+      renderDecls = concatMap ((++ ";\n") . render)
+      mergedSF = fields spec -- maybe id (mergeSF . fields) prevSpec (fields spec)
       withTemplate =
         lined %~ \case
           "//STRUCTBODY" -> renderDecls (buildStateMembers mergedSF)
@@ -167,7 +186,7 @@ mergeSF old new = expandedDummies ++ map snd notFound
       | otherwise = StateField {fieldName = "dummy" ++ show i, fieldInit = Nothing, fieldScope = Nothing, ..}
 
 data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: Stm}
-  deriving (Data)
+  deriving (Data, Show)
 
 getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
 getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
@@ -213,19 +232,88 @@ getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
 reinitStmts :: Maybe StateSpec -> StateSpec -> [Stm]
 reinitStmts Nothing _ = []
 reinitStmts (Just prevSpec) spec =
-  toInitStmts
-    [ field
-      | field <- fields spec,
-        fromMaybe False $ liftA2 cinitNE (fieldInit field) (lookupPrev field)
-    ]
+  [ [cstm| if (t) { $stms:reinitToNew } else { $stms:reinitInPlace } |]
+  ]
   where
     prevMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), initVal)
-          | f <- fields prevSpec,
-            Just initVal <- [fieldInit f]
+        [ ((fieldOrigName f, fieldScope f), f)
+          | f <- fields prevSpec
         ]
-    lookupPrev f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+
+    lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+
+    reinitInPlace = concatMap (reinitTarget "s") (fields spec)
+
+    reinitTarget target field =
+      case lookupPrevField field of
+        Nothing -> initTarget target field (fieldInit field)
+        Just prevField
+          | initEqual (fieldInit field) (fieldInit prevField) -> []
+          | otherwise -> initTarget target field (fieldInit field)
+
+    reinitToNew = concatMap reinitFieldToNew (fields spec)
+
+    reinitFieldToNew field =
+      case lookupPrevField field of
+        Just prevField
+          | initEqual (fieldInit field) (fieldInit prevField) -> copyField prevField field
+        _ -> initTarget "t" field (fieldInit field)
+
+    initTarget _ _ Nothing = []
+    initTarget target field (Just initVal) = buildInitTarget target field initVal
+
+    buildInitTarget target field initVal =
+      case mapM constToArrayLen $ fieldArraySize field of
+        Just [len] ->
+          [ Exp (Just (mkAssignIndexTarget target field idx initVal)) noLoc
+            | idx <- [0 .. len - 1]
+          ]
+        Nothing -> [Exp (Just (mkAssignTarget target field initVal)) noLoc]
+
+    mkAssignTarget target field initVal =
+      Assign
+        (mkMemberFrom target (fieldName field))
+        JustAssign
+        (initToExpr (fieldType field) initVal)
+        noLoc
+
+    mkAssignIndexTarget target field idx initVal =
+      Assign
+        (mkMemberIndexFrom target (fieldName field) idx)
+        JustAssign
+        (initExprAt idx initVal)
+        noLoc
+
+    copyField prevField field =
+      case ( mapM constToArrayLen $ fieldArraySize field,
+             mapM constToArrayLen $ fieldArraySize prevField
+           ) of
+        (Just [newLen], Just [prevLen]) ->
+          [ Exp (Just (mkCopyIndex idx)) noLoc
+            | idx <- [0 .. min newLen prevLen - 1]
+          ]
+        (Nothing, Nothing) -> [Exp (Just mkCopy) noLoc]
+        _ -> initTarget "t" field (fieldInit field)
+      where
+        mkCopy =
+          Assign
+            (mkMemberFrom "t" (fieldName field))
+            JustAssign
+            (mkMemberFrom "s" (fieldName field))
+            noLoc
+
+        mkCopyIndex idx =
+          Assign
+            (mkMemberIndexFrom "t" (fieldName field) idx)
+            JustAssign
+            (mkMemberIndexFrom "s" (fieldName field) idx)
+            noLoc
+
+    initEqual Nothing Nothing = True
+    initEqual (Just a) (Just b) = not (cinitNE a b)
+    initEqual _ _ = False
+
 
 cinitNE :: Initializer -> Initializer -> Bool
 cinitNE (ExpInitializer (Const a _) _) (ExpInitializer (Const b _) _) = not (cinitEQ a b)
@@ -250,10 +338,14 @@ keepInit :: String -> Bool
 keepInit _ = True
 
 test = do
-  let fn = [cunit| void f() { while (true) { static int x = 0; } } |]
+  let fn = [cunit| void f() { while (true) { static int array[10]; } } |]
+      spec = buildStateSpec fn
+      mergedSF = maybe id (mergeSF . fields) Nothing (fields spec)
   pPrint fn
-  pPrint $ collectStaticLocals fn
+  pPrint $ buildStateSpec fn
+  pPrint $ map (pretty 100 . ppr) $ buildStateMembers mergedSF
 
+-- getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
 isStaticSpec :: DeclSpec -> Bool
 isStaticSpec (DeclSpec storage _ _ _) =
   isJust $
@@ -278,18 +370,28 @@ declTypeSpec :: DeclSpec -> TypeSpec
 declTypeSpec (DeclSpec _ _ ty _) = ty
 declTypeSpec _ = Tvoid noLoc
 
+declArraySize :: Decl -> [Const]
+declArraySize (Ptr _ decl _) = declArraySize decl
+declArraySize (Array _ (ArraySize _ (Const sizeConst _) _) d _) = sizeConst : declArraySize d
+declArraySize (Array _ _ decl _) = declArraySize decl
+declArraySize (BlockPtr _ decl _) = declArraySize decl
+declArraySize _ = []
+
+
 fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe StateField
 fieldFromDecl specs scope (Init ident decl _ initVal _ _)
   | declrHasntFun decl =
       let ty = declTypeSpec specs
           name = identName ident
+          arraySize = declArraySize decl
        in Just
             StateField
               { fieldType = ty,
                 fieldOrigName = name,
                 fieldName = name,
                 fieldInit = initVal,
-                fieldScope = scope
+                fieldScope = scope,
+                fieldArraySize = arraySize
               }
 fieldFromDecl _ _ _ = Nothing
 
@@ -302,16 +404,60 @@ mkIdent name = Id name noLoc
 mkMember :: String -> Exp
 mkMember name = [cexp| s->$id:name |]
 
+mkMemberFrom :: String -> String -> Exp
+mkMemberFrom target name = [cexp| $id:target->$id:name |]
+
+mkMemberIndex :: String -> Int -> Exp
+mkMemberIndex name idx =
+  Index
+    (mkMember name)
+    (Const (IntConst (show idx) Signed (fromIntegral idx) noLoc) noLoc)
+    noLoc
+
+mkMemberIndexFrom :: String -> String -> Int -> Exp
+mkMemberIndexFrom target name idx =
+  Index
+    (mkMemberFrom target name)
+    (Const (IntConst (show idx) Signed (fromIntegral idx) noLoc) noLoc)
+    noLoc
+
 initToExpr :: TypeSpec -> Initializer -> Exp
 initToExpr _ (ExpInitializer expr _) = expr
 initToExpr ty (CompoundInitializer items _) =
   CompoundLit (Type (DeclSpec [] [] ty noLoc) (DeclRoot noLoc) noLoc) items noLoc
 initToExpr _ _ = Const (IntConst "0" Signed 0 noLoc) noLoc
 
+initExprAt :: Int -> Initializer -> Exp
+initExprAt _ (ExpInitializer expr _) = expr
+initExprAt idx (CompoundInitializer items _) =
+  case positionalInitAt idx items of
+    Just initVal -> initExprAt idx initVal
+    Nothing -> Const (IntConst "0" Signed 0 noLoc) noLoc
+initExprAt _ _ = Const (IntConst "0" Signed 0 noLoc) noLoc
+
+positionalInitAt :: Int -> [(Maybe Designation, Initializer)] -> Maybe Initializer
+positionalInitAt idx items =
+  let positional = [initVal | (Nothing, initVal) <- items]
+   in if idx >= 0 && idx < length positional
+        then Just (positional !! idx)
+        else Nothing
+
+constToArrayLen :: Const -> Maybe Int
+constToArrayLen (IntConst lit _ _ _) =
+  case reads lit of
+    [(n, _)] | n >= (0 :: Integer) -> Just (fromInteger n)
+    _ -> Nothing
+constToArrayLen _ = Nothing
+
 buildStateMembers :: [StateField] -> [InitGroup]
 buildStateMembers = map buildDecl
   where
     buildDecl StateField {..} =
       let declSpec = DeclSpec [] [] fieldType noLoc
-          initDecl = Init (mkIdent fieldName) (DeclRoot noLoc) Nothing Nothing [] noLoc
+          declRoot =
+            case fieldArraySize of
+              [sizeConst] ->
+                Array [] (ArraySize False (Const sizeConst noLoc) noLoc) (DeclRoot noLoc) noLoc
+              [] -> DeclRoot noLoc
+          initDecl = Init (mkIdent fieldName) declRoot Nothing Nothing [] noLoc
        in InitGroup declSpec [] [initDecl] noLoc
