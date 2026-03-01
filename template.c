@@ -27,11 +27,6 @@ void Reinit(struct state *s, struct state *t) {
 }
 
 bool Step(struct state *s) {
-  static bool reinited = false;
-  if (!reinited) {
-    Reinit(s);
-    reinited = true;
-  }
 //STEPBODY
 }
 
