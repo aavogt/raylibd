@@ -8,12 +8,12 @@ import Data.Loc (noLoc)
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Set as S
+import Debug.Trace
 import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class (ppr)
 import Text.Show.Pretty (pPrint, ppShow)
-import Debug.Trace
 
 pattern Fun id block <-
   ( \case
@@ -252,18 +252,19 @@ reinitStmts (Just prevSpec) spec =
         _ -> initTarget "t" field (fieldInit field)
 
 initTarget _ _ Nothing = []
-initTarget target StateField{..} (Just initVal) =
+initTarget target StateField {..} (Just initVal) =
   case mapM constToArrayLen fieldArraySize of
     Just indexBounds -> [genLoops indexBounds]
-    Nothing -> [ [cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |] ]
+    Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
 
 copyField prevField field =
   case ( mapM constToArrayLen $ fieldArraySize field,
          mapM constToArrayLen $ fieldArraySize prevField
        ) of
     (Just [newLen], Just [prevLen]) ->
-        [ [cstm| t->$id:(fieldName field)[$int:idx] = s->$id:(fieldName field)[$int:idx]; |] |
-            idx <- [0 .. min newLen prevLen -1 ]]
+      [ [cstm| t->$id:(fieldName field)[$int:idx] = s->$id:(fieldName field)[$int:idx]; |]
+        | idx <- [0 .. min newLen prevLen - 1]
+      ]
     (Nothing, Nothing) -> [[cstm| t->$id:(fieldName field) = s->$id:(fieldName prevField); |]]
     _ -> initTarget "t" field (fieldInit field)
 

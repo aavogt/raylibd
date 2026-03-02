@@ -5,10 +5,10 @@ import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
 import Data.Functor ((<&>))
 import Data.IORef
+import Data.Loc (noLoc)
 import Language.C hiding (Init)
 import qualified Language.C.Parser as CParser
 import Paths_raylibd
-
 import System.Console.CmdArgs
 import System.Directory
 import System.Exit
@@ -17,7 +17,7 @@ import System.FilePath
 import System.IO
 import System.Process
 import Transform
-import Data.Loc (noLoc)
+import Data.List
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
@@ -30,10 +30,12 @@ watchmode =
       outputmain = "dll.c",
       cflags = ["-std=gnu17", "-DRAYLIBD=0"] &= help "c preprocessor flags",
       cflags_extra = [],
-      typedefs = words
+      typedefs =
+        words
           "Vector2  Vector3  Vector4  Matrix  Color  Rectangle  Image  Texture  RenderTexture  NPatchInfo  GlyphInfo  Font  Camera2D  Camera3D \
           \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
-          \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList" &= help "override raylib typedef struct",
+          \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList"
+          &= help "override raylib typedef struct",
       typedefs_extra = [] &= help "extra names considered type names",
       echo = True &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
@@ -61,7 +63,7 @@ watch Init {..} = do
   mapM_ copyData $ words "main.c main_hot.c Makefile vendor/Makefile"
   for_ dest setCurrentDirectory
   system "make compile_commands.json"
-watch Raylibd {..} = withManagerConf defaultConfig{ confDebounce = Debounce 0.1 }  \mgr -> do
+watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1} \mgr -> do
   dir <- takeDirectory <$> makeAbsolute inputmain
   let cppFlags = "-MM" : cflags ++ cflags_extra
   includes <-
