@@ -69,8 +69,16 @@ watch Raylibd {..} = withManagerConf defaultConfig{ confDebounce = Debounce 0.1 
       Left _exit -> [inputmain]
       Right bs -> map C8.unpack $ drop 1 $ C8.words bs
 
-
-  includes_prop <- readFile inputmain <&> unlines . takeWhile ((== "#") . take 1) . lines
+  -- beginning of the file the #endif matching the #ifndef RAYLIBD inclusive
+  includes_prop <-
+    let takeUntilEndif n seen = \case
+          "#endif" : _ | n == 0 -> ["#endif"]
+          x : xs -> let seen' = max seen (x == "#ifndef RAYLIBD")
+              in x : takeUntilEndif (adjustN x n seen') seen' xs
+        adjustN "#endif" n _ = n - 1
+        adjustN c n True | "#if" `isPrefixOf` c = n+1
+        adjustN _ n _ = n
+     in readFile inputmain <&> partsOf lined %~ takeUntilEndif 0 False
 
   prev <- newIORef (Prev Nothing)
   templatec <- getDataFileName "template.c"
