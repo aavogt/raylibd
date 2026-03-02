@@ -103,26 +103,15 @@ toStateFields fields0 =
        in (seen', field {fieldName = newName})
 
 toInitStmts :: [StateField] -> [Stm]
-toInitStmts =
-  concatMap toInit
-  where
-    toInit field =
-      case fieldInit field of
-        Nothing -> []
-        Just initVal -> buildInit field initVal
-
-    buildInit field@StateField {..} initVal =
+toInitStmts sfs =
+  [ case mlengths of
+      Just lengths -> genLoops lengths \vs ->
+        let lhs = indexExpr [cexp| s->$id:fieldName |] vs
+         in [cstm| $lhs = $initExpr; |]
+      _ -> [cstm| s->$id:fieldName = $initExpr; |]
+    | field@StateField {fieldInit = Just initVal, fieldArraySize = mapM constToArrayLen -> mlengths, ..} <- sfs,
       let initExpr = initToExpr fieldType initVal
-       in case mapM constToArrayLen fieldArraySize of
-            Just lengths ->
-              let vs = map (:[]) ['i' .. 'z']
-                  lhs =
-                    foldl
-                      (\e v -> [cexp| $exp:e[$id:v] |])
-                      [cexp| s->$id:fieldName |]
-                      (zipWith const vs lengths)
-              in [nestedLoops (zip vs lengths) [cstm| $lhs = $initExpr; |] ]
-            _ -> [[cstm| s->$id:fieldName = $initExpr; |]]
+  ]
 
 toUseRewrite :: [StateField] -> [UseRewrite]
 toUseRewrite =
@@ -302,32 +291,25 @@ test = do
   pPrint $ buildStateSpec fn
   pPrint $ map (pretty 100 . ppr) $ buildStateMembers mergedSF
 
-  putStrLn $ pretty 120 $ ppr $ genLoops [1, 5]
+  putStrLn $ pretty 120 $ ppr $ genLoopsST [1, 5]
 
--- Build from innermost outward
-nestedLoops :: [(String, Int)] -> Stm -> Stm
-nestedLoops [] body = body
-nestedLoops ((v, n) : rest) body =
-  let inner = nestedLoops rest body
-      bound = [cexp| $int:n |]
-   in [cstm| for (int $id:v = 0; $id:v < $exp:bound; $id:v++)
-              $stm:inner |]
+genLoopsST :: [Int] -> Stm
+genLoopsST bounds = genLoops bounds \vs ->
+  let lhs = indexExpr [cexp| t |] vs
+      rhs = indexExpr [cexp| s |] vs
+   in [cstm| $exp:lhs = $exp:rhs; |]
 
-genLoops :: [Int] -> Stm
-genLoops bounds =
-  let vs = take (length bounds) (map (: []) ['i' .. 'z'])
-      lhs = indexExpr "t" vs
-      rhs = indexExpr "s" vs
-      body = [cstm| $exp:lhs = $exp:rhs; |]
-   in nestedLoops (zip vs bounds) body
+genLoops :: [Int] -> ([String] -> Stm) -> Stm
+genLoops bounds mkBody =
+  let -- indexes = [ i,j,k ... i1, j1 ... ]
+      indexes = [pre : suffix | suffix <- "" : map show [1 ..], pre <- ['i' .. 'z']]
+      vs = take (length bounds) indexes
+      step body (v, n) = [cstm| for (int $id:v = 0; $id:v < $int:n; $id:v++) $stm:body |]
+   in foldl step (mkBody vs) (zip vs bounds)
 
--- Build arr[i][j][k]... by folding index applications
-indexExpr :: String -> [String] -> Exp
-indexExpr arr vs =
-  foldl
-    (\e v -> [cexp| $exp:e[$id:v] |])
-    [cexp| $id:arr |]
-    vs
+-- | indexExpr arr [i,j,k] is arr[i][j][k]
+indexExpr :: Exp -> [String] -> Exp
+indexExpr = foldl \e v -> [cexp| $exp:e[$id:v] |]
 
 isStaticSpec :: DeclSpec -> Bool
 isStaticSpec = anyOf template \case Tstatic {} -> True; _ -> False
