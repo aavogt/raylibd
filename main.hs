@@ -20,7 +20,7 @@ import Transform
 import Data.Loc (noLoc)
 
 data Raylibd
-  = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra :: [String], echo :: Bool, once :: Bool}
+  = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
   | Init {inputmain :: String, dest :: Maybe FilePath, force :: Bool}
   deriving (Data)
 
@@ -30,6 +30,11 @@ watchmode =
       outputmain = "dll.c",
       cflags = ["-std=gnu17", "-DRAYLIBD=0"] &= help "c preprocessor flags",
       cflags_extra = [],
+      typedefs = words
+          "Vector2  Vector3  Vector4  Matrix  Color  Rectangle  Image  Texture  RenderTexture  NPatchInfo  GlyphInfo  Font  Camera2D  Camera3D \
+          \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
+          \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList" &= help "override raylib typedef struct",
+      typedefs_extra = [] &= help "extra names considered type names",
       echo = True &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
@@ -70,7 +75,7 @@ watch Raylibd {..} = withManagerConf defaultConfig{ confDebounce = Debounce 0.1 
   prev <- newIORef (Prev Nothing)
   templatec <- getDataFileName "template.c"
   let reloadMainC = do
-        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) inputmain
+        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) (typedefs ++ typedefs_extra) inputmain
         case result of
           Left e -> hPrint stderr result
           _ -> return ()
@@ -96,12 +101,12 @@ runPreprocessor gcc flags input = do
     ExitSuccess -> Right (C8.pack out)
     _ -> Left exit
 
-parseCFileWithGcc gcc flags input = do
+parseCFileWithGcc gcc flags typedefs input = do
   (exit, out, _err) <- readProcessWithExitCode gcc ("-E" : flags ++ [input]) ""
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  pure $ parse [] [] parseUnit (C8.pack contents) Nothing
+  pure $ parse [] typedefs parseUnit (C8.pack contents) Nothing
 
 notRemoved = \case
   Removed {} -> False

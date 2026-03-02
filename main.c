@@ -22,7 +22,7 @@ int main() {
     char text[] = "     rayskeleton!";
     static int n = 0, m = 0, x = 0;
     snprintf(text, 5, "%04d", n);
-    struct Color cols[] = {PURPLE};
+    Color cols[] = {PURPLE};
     if (n++ % nframe == 0) {
       if (++m >= LEN(cols))
         m = 0;
