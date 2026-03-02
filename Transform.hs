@@ -13,6 +13,7 @@ import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class (ppr)
 import Text.Show.Pretty (pPrint, ppShow)
+import Debug.Trace
 
 pattern Fun id block <-
   ( \case
@@ -110,27 +111,18 @@ toInitStmts =
         Nothing -> []
         Just initVal -> buildInit field initVal
 
-    buildInit field initVal =
-      case mapM constToArrayLen (fieldArraySize field) of
-        Just [len] ->
-          [ Exp (Just (mkAssignIndex field idx initVal)) noLoc
-            | idx <- [0 .. len - 1]
-          ]
-        Nothing -> [Exp (Just (mkAssign field initVal)) noLoc]
-
-    mkAssign field initVal =
-      Assign
-        (mkMember (fieldName field))
-        JustAssign
-        (initToExpr (fieldType field) initVal)
-        noLoc
-
-    mkAssignIndex field idx initVal =
-      Assign
-        (mkMemberIndex (fieldName field) idx)
-        JustAssign
-        (initExprAt idx initVal)
-        noLoc
+    buildInit field@StateField {..} initVal =
+      let initExpr = initToExpr fieldType initVal
+       in case mapM constToArrayLen fieldArraySize of
+            Just lengths ->
+              let vs = map (:[]) ['i' .. 'z']
+                  lhs =
+                    foldl
+                      (\e v -> [cexp| $exp:e[$id:v] |])
+                      [cexp| s->$id:fieldName |]
+                      (zipWith const vs lengths)
+              in [nestedLoops (zip vs lengths) [cstm| $lhs = $initExpr; |] ]
+            _ -> [[cstm| s->$id:fieldName = $initExpr; |]]
 
 toUseRewrite :: [StateField] -> [UseRewrite]
 toUseRewrite =
@@ -157,7 +149,7 @@ substituteTemplate from spec Prev {..} =
   let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls = concatMap ((++ ";\n") . render)
-      mergedSF = fields spec -- maybe id (mergeSF . fields) prevSpec (fields spec)
+      mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
       withTemplate =
         lined %~ \case
           "//STRUCTBODY" -> renderDecls (buildStateMembers mergedSF)
@@ -260,60 +252,25 @@ reinitStmts (Just prevSpec) spec =
           | initEqual (fieldInit field) (fieldInit prevField) -> copyField prevField field
         _ -> initTarget "t" field (fieldInit field)
 
-    initTarget _ _ Nothing = []
-    initTarget target field (Just initVal) = buildInitTarget target field initVal
+initTarget _ _ Nothing = []
+initTarget target StateField{..} (Just initVal) =
+  case mapM constToArrayLen fieldArraySize of
+    Just indexBounds -> [genLoops indexBounds]
+    Nothing -> [ [cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |] ]
 
-    buildInitTarget target field initVal =
-      case mapM constToArrayLen $ fieldArraySize field of
-        Just [len] ->
-          [ Exp (Just (mkAssignIndexTarget target field idx initVal)) noLoc
-            | idx <- [0 .. len - 1]
-          ]
-        Nothing -> [Exp (Just (mkAssignTarget target field initVal)) noLoc]
+copyField prevField field =
+  case ( mapM constToArrayLen $ fieldArraySize field,
+         mapM constToArrayLen $ fieldArraySize prevField
+       ) of
+    (Just [newLen], Just [prevLen]) ->
+        [ [cstm| t->$id:(fieldName field)[$int:idx] = s->$id:(fieldName field)[$int:idx]; |] |
+            idx <- [0 .. min newLen prevLen -1 ]]
+    (Nothing, Nothing) -> [[cstm| t->$id:(fieldName field) = s->$id:(fieldName prevField); |]]
+    _ -> initTarget "t" field (fieldInit field)
 
-    mkAssignTarget target field initVal =
-      Assign
-        (mkMemberFrom target (fieldName field))
-        JustAssign
-        (initToExpr (fieldType field) initVal)
-        noLoc
-
-    mkAssignIndexTarget target field idx initVal =
-      Assign
-        (mkMemberIndexFrom target (fieldName field) idx)
-        JustAssign
-        (initExprAt idx initVal)
-        noLoc
-
-    copyField prevField field =
-      case ( mapM constToArrayLen $ fieldArraySize field,
-             mapM constToArrayLen $ fieldArraySize prevField
-           ) of
-        (Just [newLen], Just [prevLen]) ->
-          [ Exp (Just (mkCopyIndex idx)) noLoc
-            | idx <- [0 .. min newLen prevLen - 1]
-          ]
-        (Nothing, Nothing) -> [Exp (Just mkCopy) noLoc]
-        _ -> initTarget "t" field (fieldInit field)
-      where
-        mkCopy =
-          Assign
-            (mkMemberFrom "t" (fieldName field))
-            JustAssign
-            (mkMemberFrom "s" (fieldName field))
-            noLoc
-
-        mkCopyIndex idx =
-          Assign
-            (mkMemberIndexFrom "t" (fieldName field) idx)
-            JustAssign
-            (mkMemberIndexFrom "s" (fieldName field) idx)
-            noLoc
-
-    initEqual Nothing Nothing = True
-    initEqual (Just a) (Just b) = not (cinitNE a b)
-    initEqual _ _ = False
-
+initEqual Nothing Nothing = True
+initEqual (Just a) (Just b) = not (cinitNE a b)
+initEqual _ _ = False
 
 cinitNE :: Initializer -> Initializer -> Bool
 cinitNE (ExpInitializer (Const a _) _) (ExpInitializer (Const b _) _) = not (cinitEQ a b)
@@ -345,17 +302,35 @@ test = do
   pPrint $ buildStateSpec fn
   pPrint $ map (pretty 100 . ppr) $ buildStateMembers mergedSF
 
--- getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
+  putStrLn $ pretty 120 $ ppr $ genLoops [1, 5]
+
+-- Build from innermost outward
+nestedLoops :: [(String, Int)] -> Stm -> Stm
+nestedLoops [] body = body
+nestedLoops ((v, n) : rest) body =
+  let inner = nestedLoops rest body
+      bound = [cexp| $int:n |]
+   in [cstm| for (int $id:v = 0; $id:v < $exp:bound; $id:v++)
+              $stm:inner |]
+
+genLoops :: [Int] -> Stm
+genLoops bounds =
+  let vs = take (length bounds) (map (: []) ['i' .. 'z'])
+      lhs = indexExpr "t" vs
+      rhs = indexExpr "s" vs
+      body = [cstm| $exp:lhs = $exp:rhs; |]
+   in nestedLoops (zip vs bounds) body
+
+-- Build arr[i][j][k]... by folding index applications
+indexExpr :: String -> [String] -> Exp
+indexExpr arr vs =
+  foldl
+    (\e v -> [cexp| $exp:e[$id:v] |])
+    [cexp| $id:arr |]
+    vs
+
 isStaticSpec :: DeclSpec -> Bool
-isStaticSpec (DeclSpec storage _ _ _) =
-  isJust $
-    find
-      ( \case
-          Tstatic {} -> True
-          _ -> False
-      )
-      storage
-isStaticSpec _ = False
+isStaticSpec = anyOf template \case Tstatic {} -> True; _ -> False
 
 declrHasntFun :: Decl -> Bool
 declrHasntFun (DeclRoot _) = True
@@ -377,7 +352,6 @@ declArraySize (Array _ _ decl _) = declArraySize decl
 declArraySize (BlockPtr _ decl _) = declArraySize decl
 declArraySize _ = []
 
-
 fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe StateField
 fieldFromDecl specs scope (Init ident decl _ initVal _ _)
   | declrHasntFun decl =
@@ -398,26 +372,16 @@ fieldFromDecl _ _ _ = Nothing
 identName :: Id -> String
 identName (Id name _) = name
 
-mkIdent :: String -> Id
-mkIdent name = Id name noLoc
-
 mkMember :: String -> Exp
 mkMember name = [cexp| s->$id:name |]
 
 mkMemberFrom :: String -> String -> Exp
 mkMemberFrom target name = [cexp| $id:target->$id:name |]
 
-mkMemberIndex :: String -> Int -> Exp
-mkMemberIndex name idx =
-  Index
-    (mkMember name)
-    (Const (IntConst (show idx) Signed (fromIntegral idx) noLoc) noLoc)
-    noLoc
-
 mkMemberIndexFrom :: String -> String -> Int -> Exp
 mkMemberIndexFrom target name idx =
   Index
-    (mkMemberFrom target name)
+    [cexp| $id:target->$id:name |]
     (Const (IntConst (show idx) Signed (fromIntegral idx) noLoc) noLoc)
     noLoc
 
@@ -454,10 +418,9 @@ buildStateMembers = map buildDecl
   where
     buildDecl StateField {..} =
       let declSpec = DeclSpec [] [] fieldType noLoc
-          declRoot =
-            case fieldArraySize of
-              [sizeConst] ->
-                Array [] (ArraySize False (Const sizeConst noLoc) noLoc) (DeclRoot noLoc) noLoc
-              [] -> DeclRoot noLoc
+          declRoot = foldl (\y x -> Array [] (ArraySize False (Const x noLoc) noLoc) y noLoc) (DeclRoot noLoc) fieldArraySize
           initDecl = Init (mkIdent fieldName) declRoot Nothing Nothing [] noLoc
        in InitGroup declSpec [] [initDecl] noLoc
+
+mkIdent :: String -> Id
+mkIdent name = Id name noLoc

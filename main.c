@@ -20,7 +20,8 @@ int main() {
     BeginDrawing();
     ClearBackground(BLACK);
     char text[] = "     rayskeleton!";
-    static int n = 0, m = 0, x = 0;
+    static int n = 0, m = 0, x = 1;
+    static int xs[2][12] = {2};
     snprintf(text, 5, "%04d", n);
     Color cols[] = {PURPLE};
     if (n++ % nframe == 0) {
