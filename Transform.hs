@@ -141,6 +141,7 @@ substituteTemplate from spec Prev {..} =
       mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
       withTemplate =
         lined %~ \case
+          "//DECLS" -> render (dropMainNonStatic from)
           "//STRUCTBODY" -> renderDecls (buildStateMembers mergedSF)
           "//REINITBODY" -> render reinitBody
           "//INITBODY" -> render initBody
@@ -148,6 +149,15 @@ substituteTemplate from spec Prev {..} =
           "//UNINITBODY" -> render uninitBody
           x -> x
    in (Prev {prevSpec = Just spec}, withTemplate)
+
+dropMainNonStatic :: [Definition] -> [Definition]
+dropMainNonStatic = filter (\d -> notMain d && notInit d)
+ where
+ notMain (FuncDef (Fun "main" _) _) = False
+ notMain _ = True
+
+ notInit (DecDef (InitGroup specs _ inits _) _) = isStaticSpec specs
+ notInit _ = True
 
 -- FIXME
 -- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert

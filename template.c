@@ -18,6 +18,8 @@ VTable PLUGIN;
 
 // stb style #include "rl_so.c" with one file having #define RL_SO_IMPL
 #ifdef RL_SO_IMPL
+//DECLS
+
 void Init(struct state *s) {
 //INITBODY
 }
