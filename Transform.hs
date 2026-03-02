@@ -254,7 +254,7 @@ reinitStmts (Just prevSpec) spec =
 initTarget _ _ Nothing = []
 initTarget target StateField {..} (Just initVal) =
   case mapM constToArrayLen fieldArraySize of
-    Just indexBounds -> [genLoops indexBounds]
+    Just indexBounds -> [genLoopsST indexBounds]
     Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
 
 copyField prevField field =
