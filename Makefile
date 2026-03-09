@@ -20,7 +20,7 @@ dll.so: dll.c
 	mv dll.so.2 $@
 
 dll.c: main.c
-	raylibd --once
+	[ -e main.hs ] && ghcid --command 'cabal repl' -Tmain || raylibd --once
 
 compile_commands.json: $(RAYGUI_H)
 	bear -- $(CC) $(CFLAGS) main.c -fsyntax-only
