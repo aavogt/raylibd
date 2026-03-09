@@ -5,7 +5,7 @@ import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
 import Data.Functor ((<&>))
 import Data.IORef
-import Data.Loc (noLoc)
+import Data.Loc
 import Language.C hiding (Init)
 import qualified Language.C.Parser as CParser
 import Paths_raylibd
@@ -116,7 +116,7 @@ parseCFileWithGcc gcc flags typedefs input = do
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  pure $ parse [] typedefs parseUnit (C8.pack contents) Nothing
+  pure $ parse [] typedefs parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
 
 notRemoved = \case
   Removed {} -> False
