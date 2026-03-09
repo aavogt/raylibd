@@ -74,7 +74,7 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   -- beginning of the file the #endif matching the #ifndef RAYLIBD inclusive
   includes_prop <-
     let takeUntilEndif n seen = \case
-          "#endif" : _ | n == 0 -> ["#endif"]
+          "#endif" : _ | n == 1 -> ["#endif"]
           x : xs -> let seen' = max seen (x == "#ifndef RAYLIBD")
               in x : takeUntilEndif (adjustN x n seen') seen' xs
         adjustN "#endif" n _ = n - 1
