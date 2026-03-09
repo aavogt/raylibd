@@ -151,7 +151,7 @@ substituteTemplate from spec Prev {..} =
    in (Prev {prevSpec = Just spec}, withTemplate)
 
 dropMainNonStatic :: [Definition] -> [Definition]
-dropMainNonStatic = filter (\d -> notMain d && notInit d)
+dropMainNonStatic = filter (\d -> notMain d || notInit d)
  where
  notMain (FuncDef (Fun "main" _) _) = False
  notMain _ = True
