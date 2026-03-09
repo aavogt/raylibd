@@ -32,7 +32,6 @@ default-extensions:
   - RecordWildCards
   - TupleSections
   - ViewPatterns
-  - ViewPatterns
 
 
 executable:

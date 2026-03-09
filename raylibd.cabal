@@ -32,7 +32,6 @@ executable raylibd
       RecordWildCards
       TupleSections
       ViewPatterns
-      ViewPatterns
   build-depends:
       base
     , bytestring
