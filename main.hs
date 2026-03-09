@@ -36,7 +36,7 @@ watchmode =
           \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
           \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList"
           &= help "override raylib typedef struct",
-      typedefs_extra = [] &= help "extra names considered type names",
+      typedefs_extra = [] &= help "extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges",
       echo = True &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
@@ -85,7 +85,8 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   prev <- newIORef (Prev Nothing)
   templatec <- getDataFileName "template.c"
   let reloadMainC = do
-        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) (typedefs ++ typedefs_extra) inputmain
+        let allTypedefs = concatMap split (typedefs ++ typedefs_extra)
+        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) allTypedefs inputmain
         case result of
           Left e -> hPrint stderr result
           _ -> return ()
@@ -103,6 +104,11 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   forever do
     ev <- readChan ch
     reloadMainC
+
+split :: String -> [String]
+split [] = [[]]
+split (x : xs) | x `elem` " ,;" = [] : split xs
+  | otherwise = split xs & _head %~ (x:)
 
 runPreprocessor :: FilePath -> [String] -> FilePath -> IO (Either ExitCode C8.ByteString)
 runPreprocessor gcc flags input = do
