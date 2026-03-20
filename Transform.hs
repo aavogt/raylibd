@@ -137,7 +137,7 @@ newtype Prev = Prev {prevSpec :: Maybe StateSpec}
 substituteTemplate from spec Prev {..} =
   let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
-      renderDecls = concatMap ((++ ";\n") . render)
+      renderDecls xs = concatMap ((++ ";\n") . render) xs
       mergedSF = maybe id (mergeSF . fields) prevSpec (fields spec)
       withTemplate =
         lined %~ \case
