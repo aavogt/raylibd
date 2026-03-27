@@ -18,6 +18,8 @@ import System.IO
 import System.Process
 import Transform
 import Data.List
+import ParseTD
+import Text.Show.Pretty
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
@@ -40,6 +42,7 @@ watchmode =
       echo = True &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
+    &= verbosity
     &= help "turn [FILE] into dll.c which is a "
 
 initmode =
@@ -118,11 +121,17 @@ runPreprocessor gcc flags input = do
     _ -> Left exit
 
 parseCFileWithGcc gcc flags typedefs input = do
-  (exit, out, _err) <- readProcessWithExitCode gcc ("-E" : flags ++ [input]) ""
+  let args = "-E" : flags ++ [input]
+  whenLoud $ putStrLn $ unwords $ ">" : gcc : args
+  (exit, out, _err) <- readProcessWithExitCode gcc args ""
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  pure $ parse [] typedefs parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
+  case parseAddingTD [] typedefs parseUnit (C8.pack contents) (Just (Pos input 1 1 0)) of
+    ([], r) -> return r
+    (inferredTypedefs, r) -> do
+      whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
+      return r
 
 notRemoved = \case
   Removed {} -> False
