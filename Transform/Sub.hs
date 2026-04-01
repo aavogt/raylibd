@@ -46,10 +46,6 @@ substituteTemplate from spec Prev {..} =
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
 
--- FIXME
--- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert
--- - sortBy is probably better than this, possibly make sure old is always sorted
--- - produce reinitBody here?
 mergeSF :: [StateField] -> [StateField] -> [StateField]
 mergeSF old new = trimTrailingDummies (reused ++ remaining)
   where
