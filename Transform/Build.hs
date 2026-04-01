@@ -9,7 +9,6 @@ module Transform.Build
     toStateFields,
     toInitStmts,
     toUseRewrite,
-    mergeSF,
     isWhile,
     dropMainNonStatic,
   )
@@ -20,7 +19,6 @@ import Control.Lens.Extras
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
-import qualified Data.Set as S
 import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Transform.Common
@@ -102,47 +100,6 @@ toUseRewrite fs s =
           useScope = fieldScope field,
           useExpr = mkMemberFrom s (fieldName field)
         }
-
--- FIXME
--- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert
--- - sortBy is probably better than this, possibly make sure old is always sorted
--- - produce reinitBody here?
---
--- This ends up producing:
--- struct state {
--- Seg dummy0[2];
--- int nframe;
--- Seg dummy2[3];
--- Seg dummy3[4];
--- Seg dummy4[5];
--- Seg dummy5[6];
--- Seg dummy6[7];
--- Seg segs[2];
---
--- };
--- struct prevstate {
--- Seg dummy0[2];
--- int nframe;
--- Seg dummy2[3];
--- Seg dummy3[4];
--- Seg dummy4[5];
--- Seg dummy5[6];
--- Seg segs[7];
---
--- };
--- 1. merge dummies? But dummyi should be a different constructor?
-mergeSF :: [StateField] -> [StateField] -> [StateField]
-mergeSF old new = expandedDummies ++ map snd notFound
-  where
-    oldDeclSet = S.fromList oldDecl
-    oldDecl = map show $ buildStateMembers old
-    newDecl = map show $ buildStateMembers new
-    (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
-    sameDeclSet = S.fromList $ map fst sameDecl
-    expandedDummies = zipWith3 dummyWhenMissing [0 ..] old oldDecl
-    dummyWhenMissing i o@StateField {..} oStr
-      | oStr `S.member` sameDeclSet = o
-      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, ..}
 
 isWhile :: BlockItem -> Bool
 isWhile (BlockStm (While {})) = True

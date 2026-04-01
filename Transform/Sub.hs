@@ -22,6 +22,7 @@ import Text.PrettyPrint.Mainland.Class
 import Text.Show.Pretty (pPrint)
 import Transform.Build
 import Transform.Common
+import qualified Data.Set as S
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
@@ -43,6 +44,23 @@ substituteTemplate from spec Prev {..} =
           "//UNINITBODY" -> render uninitBody
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
+
+-- FIXME
+-- - reuse dummies of the same type, instead of ++ notfound, it becomes a fold over notFound attempting to insert
+-- - sortBy is probably better than this, possibly make sure old is always sorted
+-- - produce reinitBody here?
+mergeSF :: [StateField] -> [StateField] -> [StateField]
+mergeSF old new = expandedDummies ++ map snd notFound
+  where
+    oldDeclSet = S.fromList oldDecl
+    oldDecl = map show $ buildStateMembers old
+    newDecl = map show $ buildStateMembers new
+    (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
+    sameDeclSet = S.fromList $ map fst sameDecl
+    expandedDummies = zipWith3 dummyWhenMissing [0 ..] old oldDecl
+    dummyWhenMissing i o@StateField {..} oStr
+      | oStr `S.member` sameDeclSet = o
+      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, ..}
 
 toDecl :: Definition -> Maybe Definition
 toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. funcDs) [] [Init (f ^. funcId) proto Nothing Nothing [] noLoc] noLoc) noLoc
@@ -214,3 +232,36 @@ test2 = do
 
   -- let ss0 = StateSpec [] [] (const []) []
   pPrint $ mapMaybe toDecl dl
+
+test3 = do
+  let a = [cunit| float xs[2]; char n; |]
+  let b = [cunit| float xs[3]; char n; |]
+  let c = [cunit| float xs[4]; char n; |]
+  let d = [cunit| float xs[3]; char n; |]
+  let e = [cunit| float xs[2]; char n; |]
+
+  let sa = buildStateSpec a
+  let sb = buildStateSpec b
+  let sc = buildStateSpec c
+  let sd = buildStateSpec d
+  let se = buildStateSpec e
+
+  let fa = fields sa
+  let fb = mergeSF (fields sa) (fields sb)
+  let fc = fb `mergeSF` fields sc
+  let fd = fc `mergeSF` fields sd
+  let fe = fd `mergeSF` fields se
+  let renderDecls xs = concatMap ((++ ";\n") . render) xs
+      render x = pretty 120 $ ppr x
+      pp = putStrLn . renderDecls . buildStateMembers . uniqueDummy
+  putStrLn "struct state_a {"
+  pp fa
+  putStrLn "} struct state_b {"
+  pp fb
+  putStrLn "} struct state_c {"
+  pp fc
+  putStrLn "} struct state_d {"
+  pp fd
+  putStrLn "} struct state_e {"
+  pp fe
+  putStrLn "}"
