@@ -1,0 +1,216 @@
+{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
+
+module Transform.Sub
+  ( Prev (..),
+    substituteTemplate,
+  )
+where
+
+import Control.Lens hiding (Const)
+import Control.Lens.Extras
+import Data.Data
+import Data.List
+import Data.Loc (noLoc)
+import qualified Data.Map as M
+import Data.Maybe
+import Language.C hiding (mkIdent)
+import Language.C.Quote.C
+import Text.PrettyPrint.Mainland
+import Text.PrettyPrint.Mainland.Class
+import Text.Show.Pretty (pPrint)
+import Transform.Build
+import Transform.Common
+
+data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
+
+substituteTemplate :: [Definition] -> StateSpec -> Prev -> (Prev, String -> String)
+substituteTemplate from spec Prev {..} =
+  let render x = pretty 120 $ ppr x
+      Just (Bodies {..}) = getBodies spec prevSpec from
+      renderDecls xs = concatMap ((++ ";\n") . render) xs
+      mergedSF = mergeSF prevSF (fields spec)
+      withTemplate =
+        lined %~ \case
+          "//DECLS" -> render (mapMaybe toDecl from)
+          "//DEFS" -> render (dropMainNonStatic spec from)
+          "//STRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy mergedSF
+          "//PREVSTRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy prevSF
+          "//REINITBODY" -> render reinitBody
+          "//INITBODY" -> render initBody
+          "//STEPBODY" -> render stepBody
+          "//UNINITBODY" -> render uninitBody
+          x -> x
+   in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
+
+toDecl :: Definition -> Maybe Definition
+toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. funcDs) [] [Init (f ^. funcId) proto Nothing Nothing [] noLoc] noLoc) noLoc
+  where
+    proto = Proto (DeclRoot noLoc) (f ^. funcParams) noLoc
+toDecl td@(DecDef (TypedefGroup {}) _) = Just td
+toDecl _ = Nothing
+
+funcParams :: Lens' Func Params
+funcParams op (Func a b c d e f) = op d <&> \b' -> Func a b c d e f
+
+-- funcParams op (OldFunc a b c d e f g) = op (_ d e) <&> \b' -> OldFunc a b c d e f g
+
+funcName :: Lens' Func String
+funcName op (Func a (Id b c) d e f g) = op b <&> \b' -> Func a (Id b' c) d e f g
+funcName op (OldFunc a (Id b c) d e f g h) = op b <&> \b' -> OldFunc a (Id b' c) d e f g h
+
+funcDs :: Lens' Func DeclSpec
+funcDs op (Func a b c d e f) = op a <&> \a' -> Func a' b c d e f
+funcDs op (OldFunc a b c d e f g) = op a <&> \a' -> OldFunc a' b c d e f g
+
+funcId :: Lens' Func Id
+funcId op (Func a b c d e f) = op b <&> \b' -> Func a b' c d e f
+funcId op (OldFunc a b c d e f g) = op b <&> \b' -> OldFunc a b' c d e f g
+
+-- could be Data.Data.Lens.template?
+funcBlockItems :: Lens' Func [BlockItem]
+funcBlockItems op (Func a b c d bs f) = op bs <&> \bs' -> Func a b c d bs' f
+funcBlockItems op (OldFunc a b c d e bs f) = op bs <&> \bs' -> OldFunc a b c d e bs' f
+
+--------------------------------------------------------------------------------
+-- Bodies helpers
+--------------------------------------------------------------------------------
+
+data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: Stm}
+  deriving (Data, Show)
+
+getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
+getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
+  where
+    splitMainDef (FuncDef (Fun "main" items) _) = withItems items
+    splitMainDef _ = Nothing
+
+    withItems items =
+      let SplitOnLastWhile {..} = splitOnLastWhile items
+          (initItems, updatePrefix) = partition keepInitItem preItems
+          initItems' = initItems <> map BlockStm (initStmts spec)
+          stepItems =
+            updatePrefix
+              <> loopBodyItems
+              <> maybe [] (\cond -> [BlockStm (Return (Just cond) noLoc)]) loopCond
+          initBody = Block initItems' noLoc
+          stepBody = Block stepItems noLoc
+          uninitBody = Block postItems noLoc
+          reinitBody = Block (map BlockStm (reinitStmts prevSpec spec)) noLoc
+          structBody = buildStateMembers (fields spec)
+       in Just (Bodies {..}) & applyRewrites (useRewrite spec (mkIdent "s"))
+
+    keepInitItem item =
+      let names = map identName (toListOf biplate item)
+       in all keepInit names
+
+data SplitOnLastWhile = SplitOnLastWhile {loopCond :: Maybe Exp, preItems, loopBodyItems, postItems :: [BlockItem]}
+
+splitOnLastWhile :: [BlockItem] -> SplitOnLastWhile
+splitOnLastWhile items =
+  break isWhile (reverse items)
+    & \case
+      (a, (BlockStm (While cond body _)) : cs) -> SplitOnLastWhile (Just cond) (reverse cs) (compoundItems body) (reverse a)
+      (a, cs) -> SplitOnLastWhile Nothing (reverse cs) [] (reverse a)
+  where
+    compoundItems (Block items _) = items
+    compoundItems stmt = [BlockStm stmt]
+
+-- | reinitStmts s t is the body of Reinit(state *s, state *t)
+-- s previous, t new
+reinitStmts :: Maybe StateSpec -> StateSpec -> [Stm]
+reinitStmts Nothing _ = []
+reinitStmts (Just prevSpec) spec =
+  [ [cstm| if (t) { $stms:reinitToNew } else { $stms:reinitInPlace } |]
+  ]
+  where
+    prevMap =
+      M.fromList
+        [ ((fieldOrigName f, fieldScope f), f)
+          | f <- fields prevSpec
+        ]
+
+    lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+
+    reinitInPlace = concatMap (reinitTarget "s") (fields spec)
+
+    reinitTarget target field =
+      case lookupPrevField field of
+        Nothing -> initTarget target field (fieldInit field)
+        Just prevField
+          | initEqual (fieldInit field) (fieldInit prevField) -> []
+          | otherwise -> initTarget target field (fieldInit field)
+
+    reinitToNew = concatMap reinitFieldToNew (fields spec)
+
+    reinitFieldToNew field =
+      case lookupPrevField field of
+        Just prevField
+          | initEqual (fieldInit field) (fieldInit prevField) -> copyField prevField field
+        _ -> initTarget "t" field (fieldInit field)
+
+initTarget :: String -> StateField -> Maybe Initializer -> [Stm]
+initTarget _ _ Nothing = []
+initTarget target StateField {..} (Just initVal) =
+  case mapM constToArrayLen fieldArraySize of
+    Just indexBounds -> [genLoopsST fieldName indexBounds]
+    Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
+
+copyField :: StateField -> StateField -> [Stm]
+copyField prevField field =
+  case ( mapM constToArrayLen $ fieldArraySize field,
+         mapM constToArrayLen $ fieldArraySize prevField
+       ) of
+    (Just [newLen], Just [prevLen]) ->
+      [ [cstm| t->$id:(fieldName field)[$int:idx] = s->$id:(fieldName field)[$int:idx]; |]
+        | idx <- [0 .. min newLen prevLen - 1]
+      ]
+    (Nothing, Nothing) -> [[cstm| t->$id:(fieldName field) = s->$id:(fieldName prevField); |]]
+    _ -> initTarget "t" field (fieldInit field)
+
+initEqual :: Maybe Initializer -> Maybe Initializer -> Bool
+initEqual Nothing Nothing = True
+initEqual (Just a) (Just b) = not (cinitNE a b)
+initEqual _ _ = False
+
+cinitNE :: Initializer -> Initializer -> Bool
+cinitNE (ExpInitializer (Const a _) _) (ExpInitializer (Const b _) _) = not (cinitEQ a b)
+cinitNE _ _ = False
+
+cinitEQ :: Const -> Const -> Bool
+cinitEQ (StringConst s _ _) (StringConst t _ _) = s == t
+cinitEQ (CharConst s _ _) (CharConst t _ _) = s == t
+cinitEQ (IntConst s _ _ _) (IntConst t _ _ _) = s == t
+cinitEQ (FloatConst s _ _) (FloatConst t _ _) = s == t
+cinitEQ _ _ = False
+
+keepInit :: String -> Bool
+keepInit _ = True
+
+test = do
+  let fn = [cunit| void f() { while (true) { static int array[10]; } } |]
+      spec = buildStateSpec fn
+      mergedSF = maybe id (mergeSF . fields) Nothing (fields spec)
+  pPrint fn
+  pPrint $ map (pretty 100 . ppr) $ buildStateMembers mergedSF
+
+  putStrLn $ pretty 120 $ ppr $ genLoopsST "x" [1, 5]
+
+test2 = do
+  let dl =
+        [cunit| 
+        typedef struct { float x, y; } Vector2;
+        typedef struct {
+                        Vector2 a, b;
+                        typename bool placed[2];
+                      } Seg;
+        Seg segs[2]; 
+        void f(void);
+        void f(void) { printf(); }
+
+        |]
+  pPrint dl
+
+  -- let ss0 = StateSpec [] [] (const []) []
+  pPrint $ mapMaybe toDecl dl

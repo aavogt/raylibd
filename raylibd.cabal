@@ -19,6 +19,9 @@ executable raylibd
   other-modules:
       ParseTD
       Transform
+      Transform.Build
+      Transform.Common
+      Transform.Sub
       Paths_raylibd
   hs-source-dirs:
       ./
