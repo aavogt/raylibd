@@ -1,12 +1,14 @@
-import Control.Lens
 import Control.Concurrent
+import Control.Lens
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
 import Data.Functor ((<&>))
 import Data.IORef
+import Data.List
 import Data.Loc
 import Language.C hiding (Init)
+import ParseTD
 import Paths_raylibd
 import System.Console.CmdArgs
 import System.Directory
@@ -15,10 +17,8 @@ import System.FSNotify
 import System.FilePath
 import System.IO
 import System.Process
-import Transform
-import Data.List
-import ParseTD
 import Text.Show.Pretty
+import Transform
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
@@ -76,12 +76,13 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   includes_prop <-
     let takeUntilEndif n seen = \case
           "#endif" : _ | n == 1 -> ["#endif"]
-          x : xs -> let seen' = seen || (x == "#ifndef RAYLIBD")
-              in x : takeUntilEndif (adjustN x n seen') seen' xs
+          x : xs ->
+            let seen' = seen || (x == "#ifndef RAYLIBD")
+             in x : takeUntilEndif (adjustN x n seen') seen' xs
         adjustN "#endif" n True = n - 1
-        adjustN c n True | "#if" `isPrefixOf` c = n+1
+        adjustN c n True | "#if" `isPrefixOf` c = n + 1
         adjustN _ n _ = n
-     in readFile inputmain <&> unlines  . takeUntilEndif 0 False . lines
+     in readFile inputmain <&> unlines . takeUntilEndif 0 False . lines
 
   prev <- newIORef (Prev Nothing [])
   templatec <- getDataFileName "template.c"
@@ -108,8 +109,9 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
 
 split :: String -> [String]
 split [] = [[]]
-split (x : xs) | x `elem` " ,;" = [] : split xs
-  | otherwise = split xs & _head %~ (x:)
+split (x : xs)
+  | x `elem` " ,;" = [] : split xs
+  | otherwise = split xs & _head %~ (x :)
 
 runPreprocessor :: FilePath -> [String] -> FilePath -> IO (Either ExitCode C8.ByteString)
 runPreprocessor gcc flags input = do
