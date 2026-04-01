@@ -15,6 +15,7 @@ import Data.List
 import Data.Loc (noLoc)
 import qualified Data.Map as M
 import Data.Maybe
+import Data.Ord (comparing)
 import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
@@ -50,17 +51,79 @@ substituteTemplate from spec Prev {..} =
 -- - sortBy is probably better than this, possibly make sure old is always sorted
 -- - produce reinitBody here?
 mergeSF :: [StateField] -> [StateField] -> [StateField]
-mergeSF old new = expandedDummies ++ map snd notFound
+mergeSF old new = trimTrailingDummies (reused ++ remaining)
   where
     oldDeclSet = S.fromList oldDecl
     oldDecl = map show $ buildStateMembers old
     newDecl = map show $ buildStateMembers new
     (sameDecl, notFound) = zip newDecl new & partition ((`S.member` oldDeclSet) . fst)
     sameDeclSet = S.fromList $ map fst sameDecl
-    expandedDummies = zipWith3 dummyWhenMissing [0 ..] old oldDecl
-    dummyWhenMissing i o@StateField {..} oStr
+    expandedDummies = zipWith dummyWhenMissing old oldDecl
+    (reused, remaining) = reuseDummies expandedDummies (map snd notFound)
+
+    dummyWhenMissing o@StateField {..} oStr
       | oStr `S.member` sameDeclSet = o
       | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, ..}
+
+    reuseDummies fields newFields = foldl' reuse (fields, []) newFields
+      where
+        reuse (fieldsAcc, acc) newField =
+          case bestDummyIndex newField fieldsAcc of
+            Just idx -> (replaceAt idx newField fieldsAcc, acc)
+            Nothing -> (fieldsAcc, acc ++ [newField])
+
+    bestDummyIndex newField fields =
+      let lastRealIndex = lastNonDummyIndex fields
+          candidates =
+            [ (idx, scoreDummy newField field)
+              | (idx, field) <- zip [0 ..] fields,
+                fieldName field == "",
+                fitsInDummy newField field,
+                idx > lastRealIndex || exactMatch newField field
+            ]
+       in case candidates of
+            [] -> Nothing
+            _ -> Just $ fst $ minimumBy (comparing snd) candidates
+
+    lastNonDummyIndex fields =
+      case [idx | (idx, field) <- zip [0 ..] fields, fieldName field /= ""] of
+        [] -> -1
+        xs -> last xs
+
+    exactMatch newField field =
+      sameTypeRank && sameSize
+      where
+        sameTypeRank = sameTypeAndRank newField field
+        sameSize =
+          case (mapM constToArrayLen (fieldArraySize field), mapM constToArrayLen (fieldArraySize newField)) of
+            (Just ds, Just ns) -> ds == ns
+            _ -> False
+
+    fitsInDummy newField field =
+      sameTypeAndRank newField field && sizeFits
+      where
+        sizeFits =
+          case (mapM constToArrayLen (fieldArraySize field), mapM constToArrayLen (fieldArraySize newField)) of
+            (Just ds, Just ns) | length ds == length ns -> and (zipWith (>=) ds ns)
+            _ -> False
+
+    sameTypeAndRank newField field =
+      show (fieldType field) == show (fieldType newField)
+        && length (fieldArraySize field) == length (fieldArraySize newField)
+
+    scoreDummy newField field =
+      let exactSizePenalty = if exactMatch newField field then 0 :: Int else 1
+          sizePenalty = case (mapM constToArrayLen (fieldArraySize field), mapM constToArrayLen (fieldArraySize newField)) of
+            (Just ds, Just ns) | length ds == length ns -> sum (zipWith (\a b -> abs (a - b)) ds ns)
+            _ -> 1000000
+       in (exactSizePenalty, sizePenalty)
+
+    replaceAt idx newField fields =
+      [ if i == idx then newField else field
+        | (i, field) <- zip [0 ..] fields
+      ]
+
+    trimTrailingDummies = reverse . dropWhile ((== "") . fieldName) . reverse
 
 toDecl :: Definition -> Maybe Definition
 toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. funcDs) [] [Init (f ^. funcId) proto Nothing Nothing [] noLoc] noLoc) noLoc
