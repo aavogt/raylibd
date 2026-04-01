@@ -13,6 +13,7 @@ dependencies:
     - mainland-pretty
     - srcloc
     - pretty-show
+    - transformers
 
 data-files:
   - main.c
@@ -33,9 +34,6 @@ default-extensions:
   - TupleSections
   - ViewPatterns
 
-
 executable:
-  main:
-    main.hs
-  hs-source-dirs:
-    - .
+  main: main.hs
+  source-dirs: .

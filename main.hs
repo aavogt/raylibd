@@ -1,5 +1,5 @@
-import Control.Concurrent
 import Control.Lens
+import Control.Concurrent
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
@@ -7,7 +7,6 @@ import Data.Functor ((<&>))
 import Data.IORef
 import Data.Loc
 import Language.C hiding (Init)
-import qualified Language.C.Parser as CParser
 import Paths_raylibd
 import System.Console.CmdArgs
 import System.Directory
@@ -39,10 +38,9 @@ watchmode =
           \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList"
           &= help "override raylib typedef struct",
       typedefs_extra = [] &= help "extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges",
-      echo = True &= help "echo the generated file to stdout",
+      echo = False &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
-    &= verbosity
     &= help "turn [FILE] into dll.c which is a "
 
 initmode =
@@ -78,14 +76,14 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   includes_prop <-
     let takeUntilEndif n seen = \case
           "#endif" : _ | n == 1 -> ["#endif"]
-          x : xs -> let seen' = max seen (x == "#ifndef RAYLIBD")
+          x : xs -> let seen' = seen || (x == "#ifndef RAYLIBD")
               in x : takeUntilEndif (adjustN x n seen') seen' xs
-        adjustN "#endif" n _ = n - 1
+        adjustN "#endif" n True = n - 1
         adjustN c n True | "#if" `isPrefixOf` c = n+1
         adjustN _ n _ = n
-     in readFile inputmain <&> partsOf lined %~ takeUntilEndif 0 False
+     in readFile inputmain <&> unlines  . takeUntilEndif 0 False . lines
 
-  prev <- newIORef (Prev Nothing)
+  prev <- newIORef (Prev Nothing [])
   templatec <- getDataFileName "template.c"
   let reloadMainC = do
         let allTypedefs = concatMap split (typedefs ++ typedefs_extra)

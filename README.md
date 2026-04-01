@@ -1,3 +1,30 @@
+TODO
+
+typedef struct { bool x; } Field;
+Field fields[10];
+
+needs to be a pointer, then malloc/freed....
+no. It's almost right as-is except the typedef decl is missing
+it's not missing it's in the RL_SO_IMPL when it should be before
+
+prevstate isn't computed correctly, because it depends on the previous previous state
+state therefore isn't computed correctly either?
+just copy
+now I recompute prevstate, but I end up with 
+struct state {
+Seg dummy0[3];
+int nframe;
+Seg segs[2];
+
+};
+struct prevstate {
+Seg dummy0[2];
+int nframe;
+Seg segs[3];
+
+};
+it's wrong because dummy0 grows
+
 # Raylibd
 
 raylibd is for hot reloading ordinary c raylib programs.

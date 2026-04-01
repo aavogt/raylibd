@@ -68,6 +68,7 @@ int main(int argc, char **argv) {
 
   unsigned long capacity = 2 * p.api->size;
   struct state *s = aligned_alloc(p.api->align, capacity);
+  memset(s, 0, capacity);
   p.api->Init(s);
 
   int frame = 0;
@@ -85,12 +86,13 @@ int main(int argc, char **argv) {
           capacity = p.api->size * 2;
           printf("growing state from %ld to %ld \n", capacity_prev, capacity);
           void *t = aligned_alloc(p.api->align, capacity);
+          memset(t, 0, capacity);
           memcpy(t, s, MIN(p.api->size, q.api->size));
-          p.api->Reinit(s, t);
+          p.api->Reinit((struct prevstate *)s, t);
           free(s);
           s = t;
         } else
-          p.api->Reinit(s, NULL);
+          p.api->Reinit((struct prevstate *)s, NULL);
       }
       frame = 0;
     }
