@@ -1,30 +1,3 @@
-TODO
-
-typedef struct { bool x; } Field;
-Field fields[10];
-
-needs to be a pointer, then malloc/freed....
-no. It's almost right as-is except the typedef decl is missing
-it's not missing it's in the RL_SO_IMPL when it should be before
-
-prevstate isn't computed correctly, because it depends on the previous previous state
-state therefore isn't computed correctly either?
-just copy
-now I recompute prevstate, but I end up with 
-struct state {
-Seg dummy0[3];
-int nframe;
-Seg segs[2];
-
-};
-struct prevstate {
-Seg dummy0[2];
-int nframe;
-Seg segs[3];
-
-};
-it's wrong because dummy0 grows
-
 # Raylibd
 
 raylibd is for hot reloading ordinary c raylib programs.
@@ -56,7 +29,27 @@ Save changes to `main.c` and you can usually see the changes right away.
 
  - [ ] remove original variable declarations?
  - [ ] #line pragmas
- - [ ] free functions are not copied to dll.c
- - [ ] raylib functions cause parse errors, but I also can't parse raylib's headers with language-c
- - [ ] skip constants
- - [ ] fixed size arrays input is static int x[2] = {12, 34}, output includes s->x[0] = 12; s->x[1] = 34; also don't add the original decl to Step() to compile main_arrays.c
+ - [ ] hygiene
+
+        // Calling the parameter drag makes it become s_top->drag
+        int ndrag(Drag *pdrag) {
+          int n = 0;
+          for (int i = 0; i < 5; i++) {
+            if (!(pdrag->segs[i]))
+              n++;
+          }
+          return n;
+        }
+
+        void dragseg(Seg *seg) {
+          static Drag drag;
+          // start end etc.
+          // if (ndrag(&drag)
+          for (int j = 0; j < 2; j++) {
+            if (seg->sel[j] && seg->placed[j]) {
+              printf("moving a %d\n", j);
+              seg->p[j] = GetMousePosition();
+            }
+          }
+
+        }
