@@ -39,7 +39,8 @@ substituteTemplate from spec Prev {..} =
           "//DEFS" -> render (dropMainNonStatic spec from)
           "//STRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy mergedSF
           "//PREVSTRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy prevSF
-          "//REINITBODY" -> render reinitBody
+          "//REINITALLOCBODY_ALLOC" -> render reinitAllocBody
+          "//REINITINPLACEBODY" -> render reinitInPlaceBody
           "//INITBODY" -> render initBody
           "//STEPBODY" -> render stepBody
           "//UNINITBODY" -> render uninitBody
@@ -56,17 +57,29 @@ mergeSF old new = trimTrailingDummies (reused ++ remaining)
     sameDeclSet = S.fromList $ map fst sameDecl
     expandedDummies = zipWith dummyWhenMissing old oldDecl
     (reused, remaining) = reuseDummies expandedDummies (map snd notFound)
+    oldFieldMap =
+      M.fromList
+        [ ((fieldOrigName f, fieldScope f), f)
+          | f <- old
+        ]
 
     dummyWhenMissing o@StateField {..} oStr
       | oStr `S.member` sameDeclSet = o
-      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, ..}
+      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, fieldMoved = False, ..}
 
     reuseDummies fields newFields = foldl' reuse (fields, []) newFields
       where
         reuse (fieldsAcc, acc) newField =
           case bestDummyIndex newField fieldsAcc of
-            Just idx -> (replaceAt idx newField fieldsAcc, acc)
+            Just idx -> (replaceAt idx (markMoved newField) fieldsAcc, acc)
             Nothing -> (fieldsAcc, acc ++ [newField])
+
+    lookupPrevField field = M.lookup (fieldOrigName field, fieldScope field) oldFieldMap
+
+    markMoved field =
+      case lookupPrevField field of
+        Just _ -> field {fieldMoved = True}
+        Nothing -> field
 
     bestDummyIndex newField fields =
       let lastRealIndex = lastNonDummyIndex fields
@@ -154,7 +167,7 @@ funcBlockItems op (OldFunc a b c d e bs f) = op bs <&> \bs' -> OldFunc a b c d e
 -- Bodies helpers
 --------------------------------------------------------------------------------
 
-data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: Stm}
+data Bodies = Bodies {initBody, stepBody, reinitAllocBody, reinitInPlaceBody, uninitBody :: Stm}
   deriving (Data, Show)
 
 getBodies :: StateSpec -> Maybe StateSpec -> [Definition] -> Maybe Bodies
@@ -174,7 +187,8 @@ getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
           initBody = Block initItems' noLoc
           stepBody = Block stepItems noLoc
           uninitBody = Block postItems noLoc
-          reinitBody = Block (map BlockStm (reinitStmts prevSpec spec)) noLoc
+          reinitAllocBody = Block (map BlockStm (reinitAllocStmts prevSpec spec)) noLoc
+          reinitInPlaceBody = Block (map BlockStm (reinitInPlaceStmts prevSpec spec)) noLoc
           structBody = buildStateMembers (fields spec)
        in Just (Bodies {..}) & applyRewrites (useRewrite spec (mkIdent "s"))
 
@@ -194,13 +208,12 @@ splitOnLastWhile items =
     compoundItems (Block items _) = items
     compoundItems stmt = [BlockStm stmt]
 
--- | reinitStmts s t is the body of Reinit(state *s, state *t)
+-- | reinitAllocStmts s t is the body of ReinitAlloc(prevstate *s, state *t)
 -- s previous, t new
-reinitStmts :: Maybe StateSpec -> StateSpec -> [Stm]
-reinitStmts Nothing _ = []
-reinitStmts (Just prevSpec) spec =
-  [ [cstm| if (t) { $stms:reinitToNew } else { $stms:reinitInPlace } |]
-  ]
+reinitAllocStmts :: Maybe StateSpec -> StateSpec -> [Stm]
+reinitAllocStmts Nothing _ = []
+reinitAllocStmts (Just prevSpec) spec =
+  concatMap reinitFieldToNew (nonDummyFields spec)
   where
     prevMap =
       M.fromList
@@ -210,22 +223,33 @@ reinitStmts (Just prevSpec) spec =
 
     lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
-    reinitInPlace = concatMap (reinitTarget "s") (fields spec)
-
-    reinitTarget target field =
-      case lookupPrevField field of
-        Nothing -> initTarget target field (fieldInit field)
-        Just prevField
-          | initEqual (fieldInit field) (fieldInit prevField) -> []
-          | otherwise -> initTarget target field (fieldInit field)
-
-    reinitToNew = concatMap reinitFieldToNew (fields spec)
-
     reinitFieldToNew field =
       case lookupPrevField field of
-        Just prevField
-          | initEqual (fieldInit field) (fieldInit prevField) -> copyField prevField field
+        Just prevField -> copyFieldToNew prevField field
         _ -> initTarget "t" field (fieldInit field)
+
+-- | reinitInPlaceStmts s is the body of ReinitInPlace(prevstate *s)
+-- s previous, t new (same buffer)
+reinitInPlaceStmts :: Maybe StateSpec -> StateSpec -> [Stm]
+reinitInPlaceStmts Nothing _ = []
+reinitInPlaceStmts (Just prevSpec) spec =
+  concatMap reinitFieldInPlace (nonDummyFields spec)
+  where
+    prevMap =
+      M.fromList
+        [ ((fieldOrigName f, fieldScope f), f)
+          | f <- fields prevSpec
+        ]
+
+    lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+
+    reinitFieldInPlace field =
+      case lookupPrevField field of
+        Nothing -> initTarget "t" field (fieldInit field)
+        Just prevField
+          | fieldMoved field || arraySizeChanged field prevField -> copyFieldInPlace prevField field
+          | initEqual (fieldInit field) (fieldInit prevField) -> []
+          | otherwise -> initTarget "t" field (fieldInit field)
 
 initTarget :: String -> StateField -> Maybe Initializer -> [Stm]
 initTarget _ _ Nothing = []
@@ -234,17 +258,61 @@ initTarget target StateField {..} (Just initVal) =
     Just indexBounds -> [genLoopsST fieldName indexBounds]
     Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
 
-copyField :: StateField -> StateField -> [Stm]
-copyField prevField field =
+copyFieldToNew :: StateField -> StateField -> [Stm]
+copyFieldToNew prevField field =
   case ( mapM constToArrayLen $ fieldArraySize field,
          mapM constToArrayLen $ fieldArraySize prevField
        ) of
-    (Just [newLen], Just [prevLen]) ->
-      [ [cstm| t->$id:(fieldName field)[$int:idx] = s->$id:(fieldName field)[$int:idx]; |]
-        | idx <- [0 .. min newLen prevLen - 1]
-      ]
+    (Just newDims, Just prevDims) ->
+      let minDims = zipWith min newDims prevDims
+          copyStmt =
+            genLoops minDims $ \vs ->
+              let lhs = indexExpr [cexp| t->$id:(fieldName field) |] vs
+                  rhs = indexExpr [cexp| s->$id:(fieldName prevField) |] vs
+               in [cstm| $exp:lhs = $exp:rhs; |]
+       in [copyStmt]
     (Nothing, Nothing) -> [[cstm| t->$id:(fieldName field) = s->$id:(fieldName prevField); |]]
     _ -> initTarget "t" field (fieldInit field)
+
+copyFieldInPlace :: StateField -> StateField -> [Stm]
+copyFieldInPlace prevField field =
+  case ( mapM constToArrayLen $ fieldArraySize field,
+         mapM constToArrayLen $ fieldArraySize prevField
+       ) of
+    (Just newDims, Just prevDims) ->
+      let minDims = zipWith min newDims prevDims
+          copyStmt =
+            genLoops minDims $ \vs ->
+              let lhs = indexExpr [cexp| t->$id:(fieldName field) |] vs
+                  rhs = indexExpr [cexp| s->$id:(fieldName prevField) |] vs
+               in [cstm| $exp:lhs = $exp:rhs; |]
+          zeroStmt =
+            if or (zipWith (>) newDims prevDims)
+              then
+                Just
+                  [cstm|
+                    if (sizeof(t->$id:(fieldName field)) > sizeof(s->$id:(fieldName prevField))) {
+                        memset(
+                          (void *)((char *)t->$id:(fieldName field) + sizeof(s->$id:(fieldName prevField))),
+                          0,
+                          sizeof(t->$id:(fieldName field)) - sizeof(s->$id:(fieldName prevField))
+                        );
+                    }
+                  |]
+              else Nothing
+       in maybe [copyStmt] (\stmt -> [stmt, copyStmt]) zeroStmt
+    (Nothing, Nothing) -> [[cstm| t->$id:(fieldName field) = s->$id:(fieldName prevField); |]]
+    _ -> initTarget "t" field (fieldInit field)
+
+nonDummyFields :: StateSpec -> [StateField]
+nonDummyFields spec = filter ((/= "") . fieldName) (fields spec)
+
+arraySizeChanged :: StateField -> StateField -> Bool
+arraySizeChanged field prevField =
+  case (mapM constToArrayLen $ fieldArraySize field, mapM constToArrayLen $ fieldArraySize prevField) of
+    (Nothing, Nothing) -> False
+    (Just ns, Just ps) -> ns /= ps
+    _ -> True
 
 initEqual :: Maybe Initializer -> Maybe Initializer -> Bool
 initEqual Nothing Nothing = True
@@ -324,3 +392,39 @@ test3 = do
   putStrLn "} struct state_e {"
   pp fe
   putStrLn "}"
+
+test4 = do
+  let a = [cunit| float xs[2]; char n; |]
+  let b = [cunit| float xs[3]; char n; |]
+  let c = [cunit| float xs[4]; char n; |]
+  let d = [cunit| float xs[3]; char n; |]
+  let e = [cunit| float xs[2]; char n; |]
+
+  let sa = buildStateSpec a
+  let sb = buildStateSpec b
+  let sc = buildStateSpec c
+  let sd = buildStateSpec d
+  let se = buildStateSpec e
+
+  let fa = fields sa
+  let fb = mergeSF (fields sa) (fields sb)
+  let fc = fb `mergeSF` fields sc
+  let fd = fc `mergeSF` fields sd
+  let fe = fd `mergeSF` fields se
+
+  let render x = pretty 120 $ ppr x
+      renderBody stms = putStrLn $ render $ Block (map BlockStm stms) noLoc
+      showReinit prev spec = do
+        putStrLn "-- ReinitAlloc"
+        renderBody (reinitAllocStmts prev spec)
+        putStrLn "-- ReinitInPlace"
+        renderBody (reinitInPlaceStmts prev spec)
+
+  putStrLn "====== a->b ======"
+  showReinit (Just sa {fields = fa}) (sb {fields = fb})
+  putStrLn "====== b->c ======"
+  showReinit (Just sb {fields = fb}) (sc {fields = fc})
+  putStrLn "====== c->d ======"
+  showReinit (Just sc {fields = fc}) (sd {fields = fd})
+  putStrLn "====== d->e ======"
+  showReinit (Just sd {fields = fd}) (se {fields = fe})

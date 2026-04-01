@@ -88,11 +88,11 @@ int main(int argc, char **argv) {
           void *t = aligned_alloc(p.api->align, capacity);
           memset(t, 0, capacity);
           memcpy(t, s, MIN(p.api->size, q.api->size));
-          p.api->Reinit((struct prevstate *)s, t);
+          p.api->ReinitAlloc((struct prevstate *)s, t);
           free(s);
           s = t;
         } else
-          p.api->Reinit((struct prevstate *)s, NULL);
+          p.api->ReinitInPlace((struct prevstate *)s, s);
       }
       frame = 0;
     }

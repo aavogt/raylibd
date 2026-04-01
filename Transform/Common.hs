@@ -61,7 +61,8 @@ data StateField = StateField
     fieldName :: String,
     fieldInit :: Maybe Initializer,
     fieldScope :: Maybe String,
-    fieldArraySize :: [Const]
+    fieldArraySize :: [Const],
+    fieldMoved :: Bool
   }
   deriving (Show)
 
@@ -154,7 +155,8 @@ fieldFromDecl specs scope (Init ident decl _ initVal _ _)
                 fieldName = name,
                 fieldInit = initVal,
                 fieldScope = scope,
-                fieldArraySize = arraySize
+                fieldArraySize = arraySize,
+                fieldMoved = False
               }
 fieldFromDecl _ _ _ = Nothing
 
