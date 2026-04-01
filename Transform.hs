@@ -28,22 +28,21 @@ pattern Fun id block <-
     )
 
 data StateSpec = StateSpec
-  { fields :: [StateField Identity],
+  { fields :: [StateField],
     initStmts :: [Stm],
     useRewrite :: Id -> [UseRewrite],
     hoistedNames :: [String]
   }
 
-data StateField f = StateField
+data StateField = StateField
   { fieldType :: TypeSpec,
     fieldOrigName :: String,
-    fieldName :: f String,
+    fieldName :: String,
     fieldInit :: Maybe Initializer,
     fieldScope :: Maybe String,
     fieldArraySize :: [Const]
   }
-
-deriving instance (Show (f String)) => Show (StateField f)
+  deriving Show
 
 data UseRewrite = UseRewrite
   { useName :: String,
@@ -67,7 +66,7 @@ buildStateSpec ast =
 -- Collection helpers
 --------------------------------------------------------------------------------
 
-collectGlobalVars :: [Definition] -> [StateField Maybe]
+collectGlobalVars :: [Definition] -> [StateField]
 collectGlobalVars decls =
   [ field
     | DecDef (InitGroup specs _ inits _) _ <- decls,
@@ -78,7 +77,7 @@ collectGlobalVars decls =
 
 -- ** `collectStaticLocals`
 
-collectStaticLocals :: [Definition] -> [StateField Maybe]
+collectStaticLocals :: [Definition] -> [StateField]
 collectStaticLocals tu =
   catMaybes
     [ fieldFromDecl specs (Just fn) initDecl
@@ -96,7 +95,7 @@ collectStaticLocals tu =
 
 -- - Merge globals + static locals into one field list.
 -- - Ensure unique names (rename on collision with a numeric suffix).
-toStateFields :: [StateField Maybe] -> [StateField Maybe]
+toStateFields :: [StateField] -> [StateField]
 toStateFields fields0 =
   snd $ mapAccumL rename M.empty fields0
   where
@@ -105,9 +104,9 @@ toStateFields fields0 =
           idx = M.findWithDefault 0 base seen
           newName = if idx == 0 then base else base <> show idx
           seen' = M.insert base (idx + 1) seen
-       in (seen', field {fieldName = Just newName})
+       in (seen', field {fieldName = newName})
 
-toInitStmts :: [StateField t] -> [Stm]
+toInitStmts :: [StateField] -> [Stm]
 toInitStmts sfs =
   [ case mlengths of
       Just lengths -> genLoops lengths \vs ->
@@ -118,7 +117,7 @@ toInitStmts sfs =
       let initExpr = initToExpr fieldType initVal
   ]
 
-toUseRewrite :: [StateField t] -> Id -> [UseRewrite]
+toUseRewrite :: [StateField] -> Id -> [UseRewrite]
 toUseRewrite fs s =
   let ?s = s
    in map toRewrite fs
@@ -131,20 +130,22 @@ toUseRewrite fs s =
         }
 
 -- StateField Maybe
-uniqueDummy :: [StateField Maybe] -> [StateField Identity]
+uniqueDummy :: [StateField] -> [StateField]
 uniqueDummy sfs =
   sequence
     [ do
-        n <- maybe popDummy return (fieldName sf)
-        return sf {fieldName = Identity n}
+        n <- case fieldName sf of
+          "" -> popDummy
+          name -> return name
+        return sf {fieldName = n}
       | sf <- sfs
     ]
     `evalState` dummyNames
   where
-    userNames = S.fromList [n | StateField {fieldName = Just n} <- sfs]
+    userNames = S.fromList [n | StateField {fieldName = n} <- sfs, n /= ""]
     dummyNames = filter (`S.notMember` userNames) $ map (\i -> "dummy" ++ show i) [0 ..]
     popDummy = do
-      x : xs <- get
+      ~(x : xs) <- get
       put xs
       return x
 
@@ -156,7 +157,7 @@ applyRewrites rewrites =
     Var (Id a _) _ | Just (UseRewrite {useExpr}) <- find ((a ==) . useName) rewrites -> Just useExpr
     _ -> Nothing
 
-data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField Maybe]}
+data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
 substituteTemplate from spec Prev {..} =
   let render x = pretty 120 $ ppr x
@@ -290,8 +291,8 @@ dropMainNonStatic spec = applyRewrites (useRewrite spec (mkIdent "s_top")) . fil
 --
 -- };
 -- 1. merge dummies? But dummyi should be a different constructor?
-mergeSF :: [StateField Identity] -> [StateField Identity] -> [StateField Identity]
-mergeSF old new = uniqueDummy expandedDummies ++ map snd notFound
+mergeSF :: [StateField] -> [StateField] -> [StateField]
+mergeSF old new = expandedDummies ++ map snd notFound
   where
     oldDeclSet = S.fromList oldDecl
     oldDecl = map show $ buildStateMembers old
@@ -300,8 +301,8 @@ mergeSF old new = uniqueDummy expandedDummies ++ map snd notFound
     sameDeclSet = S.fromList $ map fst sameDecl
     expandedDummies = zipWith3 dummyWhenMissing [0 ..] old oldDecl
     dummyWhenMissing i o@StateField {..} oStr
-      | oStr `S.member` sameDeclSet = o { fieldName = Just (runIdentity fieldName) }
-      | otherwise = StateField {fieldName = Nothing, fieldInit = Nothing, fieldScope = Nothing, ..}
+      | oStr `S.member` sameDeclSet = o
+      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, ..}
 
 data Bodies = Bodies {initBody, stepBody, reinitBody, uninitBody :: Stm}
   deriving (Data, Show)
@@ -361,7 +362,7 @@ reinitStmts (Just prevSpec) spec =
 
     lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
 
-    reinitInPlace = concatMap (reinitTarget "s" . _) (fields spec)
+    reinitInPlace = concatMap (reinitTarget "s") (fields spec)
 
     reinitTarget target field =
       case lookupPrevField field of
@@ -489,7 +490,7 @@ declArraySize (Array _ _ decl _) = declArraySize decl
 declArraySize (BlockPtr _ decl _) = declArraySize decl
 declArraySize _ = []
 
-fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe (StateField Maybe)
+fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe StateField
 fieldFromDecl specs scope (Init ident decl _ initVal _ _)
   | declrHasntFun decl =
       let ty = declTypeSpec specs
@@ -499,7 +500,7 @@ fieldFromDecl specs scope (Init ident decl _ initVal _ _)
             StateField
               { fieldType = ty,
                 fieldOrigName = name,
-                fieldName = Just name,
+                fieldName = name,
                 fieldInit = initVal,
                 fieldScope = scope,
                 fieldArraySize = arraySize
@@ -549,13 +550,13 @@ constToArrayLen (IntConst lit _ _ _) =
     _ -> Nothing
 constToArrayLen _ = Nothing
 
-buildStateMembers :: [StateField Identity] -> [InitGroup]
+buildStateMembers :: [StateField] -> [InitGroup]
 buildStateMembers = map buildDecl
   where
     buildDecl StateField {..} =
       let declSpec = DeclSpec [] [] fieldType noLoc
           declRoot = foldl (\y x -> Array [] (ArraySize False (Const x noLoc) noLoc) y noLoc) (DeclRoot noLoc) fieldArraySize
-          initDecl = Init (mkIdent (runIdentity fieldName)) declRoot Nothing Nothing [] noLoc
+          initDecl = Init (mkIdent fieldName) declRoot Nothing Nothing [] noLoc
        in InitGroup declSpec [] [initDecl] noLoc
 
 mkIdent :: String -> Id
