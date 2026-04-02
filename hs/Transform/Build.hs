@@ -117,5 +117,5 @@ dropMainNonStatic spec = applyRewrites (useRewrite spec (mkIdent "s_top")) . fil
     notMain (FuncDef (Fun "main" _) _) = False
     notMain _ = True
 
-    notInit (DecDef (InitGroup specs _ inits _) _) = isStaticSpec specs
+    notInit (DecDef (InitGroup specs _ inits _) _) = not (isNonConstSpec specs) || isStaticSpec specs
     notInit _ = True
