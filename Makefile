@@ -27,7 +27,8 @@ compile_commands.json: $(RAYGUI_H)
 
 clean:
 	rm -rf main_hot dll.so cabal.project.local cabal.project.local~ \
-				dist-newstyle dll.c dll.so main_hot raylibd.cabal
+				dist-newstyle dll.c dll.so main_hot raylibd.cabal \
+				main compile_commands.json
 
 $(RAYGUI_H):
 	$(MAKE) -Cvendor raygui.h
