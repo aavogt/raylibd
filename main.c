@@ -6,8 +6,6 @@
 #include <stdio.h>
 #endif
 // exclude includes for language-c's pass can't parse raylib.h
-// unfortunately typedefs are then missing so we have to write struct Color c;
-// instead of Color c;
 
 #define LEN(x) (sizeof((x)) / sizeof((x)[0]))
 
