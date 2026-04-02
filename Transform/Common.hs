@@ -209,7 +209,7 @@ buildStateMembers = map buildDecl
   where
     buildDecl StateField {..} =
       let declSpec = DeclSpec [] [] fieldType noLoc
-          declRoot = foldl (\y x -> Array [] (ArraySize False (Const x noLoc) noLoc) y noLoc) (DeclRoot noLoc) fieldArraySize
+          declRoot = foldr (\x y -> Array [] (ArraySize False (Const x noLoc) noLoc) y noLoc) (DeclRoot noLoc) fieldArraySize
           initDecl = Init (mkIdent fieldName) declRoot Nothing Nothing [] noLoc
        in InitGroup declSpec [] [initDecl] noLoc
 

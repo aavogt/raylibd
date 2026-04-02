@@ -73,19 +73,3 @@ Save changes to `main.c` and you can usually see the changes right away.
       int xs[14][2];
 
       };
-  - [ ] indexes are out of order:
-
-              void ReinitInPlace(struct prevstate *s, struct state *t) {
-          {
-              for (int j = 0; j < 12; j++)
-                  for (int i = 0; i < 2; i++)
-                      t->xs[i][j] = s->xs[i][j];
-          }
-
-          dll.c: In function ‘ReinitInPlace’:
-          dll.c:85:35: warning: iteration 2 invokes undefined behavior [-Waggressive-loop-optimizations]
-            85 |             t->xs[i][j] = s->xs[i][j];
-                |                           ~~~~~~~~^~~
-          dll.c:83:23: note: within this loop
-            83 |     for (int j = 0; j < 12; j++)
-
