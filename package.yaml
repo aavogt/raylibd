@@ -36,4 +36,16 @@ default-extensions:
 
 executable:
   main: main.hs
-  source-dirs: .
+  source-dirs: hs
+
+tests:
+  hspec:
+    main: Spec.hs
+    source-dirs:
+      - hs
+      - hstest
+    build-tools: hspec-discover
+    dependencies:
+      - hspec-golden
+      - hspec
+      - hspec-core

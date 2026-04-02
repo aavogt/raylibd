@@ -1,35 +1,60 @@
+{-# LANGUAGE BlockArguments #-}
 module Transform.SubSpec where
 
 import Transform.Sub
 import Test.Hspec
-import Test.Hspec.Golden
+import qualified Test.Hspec.Golden
+import Language.C.Quote.C
+import Transform
+import Text.PrettyPrint.Mainland
+import Text.PrettyPrint.Mainland.Class
+import Data.Maybe
+import Language.C.Quote
+import Data.Loc
+import Test.Hspec.Core.Spec
+import Control.Monad.Trans.Reader
+import Control.Monad.Trans.Class
+import Data.List
+import Unsafe.Coerce
 
-test = do
-  let fn = [cunit| void f() { while (true) { static int array[10]; } } |]
-      spec = buildStateSpec fn
-      mergedSF = maybe id (mergeSF . fields) Nothing (fields spec)
-  pPrint fn
-  pPrint $ map (pretty 100 . ppr) $ buildStateMembers mergedSF
+-- https://github.com/stackbuilders/hspec-golden/issues/64
+gold s v = do
+  env <- SpecM (lift ask)
+  it s $ Test.Hspec.Golden.defaultGolden (intercalate "." (unsafeCoerce env) ++ "." ++ s) (pretty 1000 $ ppr v)
 
-  putStrLn $ pretty 120 $ ppr $ genLoopsST "x" [1, 5]
+spec :: Spec
+spec = do
+  describe "array[10]" do
+    let fn = [cunit| void f() { while (true) { static int array[10]; } } |]
+        spec = buildStateSpec fn
+    gold "language-c-quote AST" fn
+    gold "structdef" $ buildStateMembers (fields spec)
 
-test2 = do
-  let dl =
-        [cunit| 
-        typedef struct { float x, y; } Vector2;
-        typedef struct {
-                        Vector2 a, b;
-                        typename bool placed[2];
-                      } Seg;
-        Seg segs[2]; 
-        void f(void);
-        void f(void) { printf(); }
+  describe "array[10][7]" do
+    let fn = [cunit| void f() { while (true) { static int array[10][7]; } } |]
+        spec = buildStateSpec fn
+    gold "language-c-quote AST" fn
+    gold "structdef" $ buildStateMembers (fields spec)
 
-        |]
-  pPrint dl
+  describe "genloopsST" do
+    gold "" $ genLoopsST "x" [1, 5]
 
-  -- let ss0 = StateSpec [] [] (const []) []
-  pPrint $ mapMaybe toDecl dl
+  describe "toDecl" do
+    gold "" $ map (fromMaybe (head [cunit|  void dropped(); |]) . toDecl)
+          [cunit|
+          typedef struct { float x, y; } Vector2;
+          typedef struct {
+                          Vector2 a, b;
+                          typename bool placed[2];
+                        } Seg;
+          Seg segs[2];
+          void dropped2(void); // should be?
+          void mainly(int argc, char** argv) {}
+          void main() {}
+          void main(int argc, char** argv) {}
+          void f(void) { printf(); }
+          void g() { printf(); }
+          |]
 
 test3 = do
   let a = [cunit| float xs[2]; char n; |]
@@ -99,5 +124,3 @@ test4 = do
   showReinit (Just sc {fields = fc}) (sd {fields = fd})
   putStrLn "====== d->e ======"
   showReinit (Just sd {fields = fd}) (se {fields = fe})
-
-test5 = pretty 100 (ppr $ fromJust $ toDecl $ head [cunit| void f() { return; } |]) == "void f();"
