@@ -22,7 +22,7 @@
 // t->rebound_p = s->rebound_p;
 // t->springk = s->springk;
 // t->speed_max = s->speed_max;
-// 1. they're const so they shouldn't be in struct state s
+// 1. pretend they aren't const:
 // 2. they're in the same place, so there's no need to copy
 // 3. I changed one of them so the initializer has to run again
 

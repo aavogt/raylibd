@@ -6,7 +6,7 @@ import Test.Hspec
 import qualified Test.Hspec.Golden
 import Language.C.Quote.C
 import Transform
-import Text.PrettyPrint.Mainland
+import Text.PrettyPrint.Mainland hiding (render)
 import Text.PrettyPrint.Mainland.Class
 import Data.Maybe
 import Language.C.Quote
@@ -16,6 +16,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import Data.List
 import Unsafe.Coerce
+import Text.Show.Pretty
 
 -- https://github.com/stackbuilders/hspec-golden/issues/64
 gold s v = do
@@ -62,6 +63,11 @@ spec = do
           void g() { printf(); }
           |]
 
+  describe "dropconst" do
+      let const = [cunit| const float x, y; double z; |]
+      gold "ast" const
+      gold "onlyz" $ buildStateMembers $ fields (buildStateSpec const)
+
 test3 = do
   let a = [cunit| float xs[2]; char n; |]
   let b = [cunit| float xs[3]; char n; |]
@@ -80,20 +86,28 @@ test3 = do
   let fc = fb `mergeSF` fields sc
   let fd = fc `mergeSF` fields sd
   let fe = fd `mergeSF` fields se
-  let renderDecls xs = concatMap ((++ ";\n") . render) xs
-      render x = pretty 120 $ ppr x
-      pp = putStrLn . renderDecls . buildStateMembers . uniqueDummy
   putStrLn "struct state_a {"
-  pp fa
+  ppMembers fa
   putStrLn "} struct state_b {"
-  pp fb
+  ppMembers fb
   putStrLn "} struct state_c {"
-  pp fc
+  ppMembers fc
   putStrLn "} struct state_d {"
-  pp fd
+  ppMembers fd
   putStrLn "} struct state_e {"
-  pp fe
+  ppMembers fe
   putStrLn "}"
+
+ppMembers = putStrLn . renderDecls . buildStateMembers . uniqueDummy
+renderDecls xs = concatMap ((++ ";\n") . render) xs
+
+render x = pretty 120 $ ppr x
+renderBody stms = putStrLn $ render $ Block (map BlockStm stms) noLoc
+showReinit prev spec = do
+        putStrLn "-- ReinitAlloc"
+        renderBody (reinitAllocStmts prev spec)
+        putStrLn "-- ReinitInPlace"
+        renderBody (reinitInPlaceStmts prev spec)
 
 test4 = do
   let a = [cunit| float xs[2]; char n; |]
@@ -113,14 +127,6 @@ test4 = do
   let fc = fb `mergeSF` fields sc
   let fd = fc `mergeSF` fields sd
   let fe = fd `mergeSF` fields se
-
-  let render x = pretty 120 $ ppr x
-      renderBody stms = putStrLn $ render $ Block (map BlockStm stms) noLoc
-      showReinit prev spec = do
-        putStrLn "-- ReinitAlloc"
-        renderBody (reinitAllocStmts prev spec)
-        putStrLn "-- ReinitInPlace"
-        renderBody (reinitInPlaceStmts prev spec)
 
   putStrLn "====== a->b ======"
   showReinit (Just sa {fields = fa}) (sb {fields = fb})

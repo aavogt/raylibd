@@ -42,6 +42,7 @@ collectGlobalVars :: [Definition] -> [StateField]
 collectGlobalVars decls =
   [ field
     | DecDef (InitGroup specs _ inits _) _ <- decls,
+      isNonConstSpec specs,
       not (isStaticSpec specs),
       initDecl <- inits,
       Just field <- [fieldFromDecl specs Nothing initDecl]
@@ -55,6 +56,7 @@ collectStaticLocals tu =
     [ fieldFromDecl specs (Just fn) initDecl
       | FuncDef (Fun fn items) _ <- tu ^.. template,
         InitGroup specs _ inits _ <- items ^.. template,
+        isNonConstSpec specs,
         isStaticSpec specs,
         initDecl <- inits
     ]

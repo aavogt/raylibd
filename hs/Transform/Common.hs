@@ -22,6 +22,7 @@ module Transform.Common
     declTypeSpec,
     declrHasntFun,
     isStaticSpec,
+    isNonConstSpec,
     identName,
     mkIdent,
     mkMember,
@@ -119,8 +120,14 @@ genLoops bounds mkBody =
       step body (v, n) = [cstm| for (int $id:v = 0; $id:v < $int:n; $id:v++) $stm:body |]
    in foldl step (mkBody vs) (zip vs bounds)
 
+-- Template.Build.collectGlobalVars, Template.Build.collectStaticLocals
+-- both call these two functions
+-- a single traversal might run faster but this way is clearer
 isStaticSpec :: DeclSpec -> Bool
 isStaticSpec = anyOf template \case Tstatic {} -> True; _ -> False
+
+isNonConstSpec :: DeclSpec -> Bool
+isNonConstSpec = allOf template \case Tconst {} -> False; _ -> True
 
 declrHasntFun :: Decl -> Bool
 declrHasntFun (DeclRoot _) = True
