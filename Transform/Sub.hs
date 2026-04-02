@@ -143,8 +143,10 @@ toDecl _ = Nothing
 
 funcParams :: Lens' Func Params
 funcParams op (Func a b c d e f) = op d <&> \b' -> Func a b c d e f
+funcParams op (OldFunc a b c [] e f g) = op (Params [] False noLoc) <&> \(Params ps _ _) -> OldFunc a b c (getId ps) e f g
 
--- funcParams op (OldFunc a b c d e f g) = op (_ d e) <&> \b' -> OldFunc a b c d e f g
+getId :: [Param] -> [Id]
+getId = map (\ (Param (Just a) _ _ _) -> a)
 
 funcName :: Lens' Func String
 funcName op (Func a (Id b c) d e f g) = op b <&> \b' -> Func a (Id b' c) d e f g
@@ -428,3 +430,5 @@ test4 = do
   showReinit (Just sc {fields = fc}) (sd {fields = fd})
   putStrLn "====== d->e ======"
   showReinit (Just sd {fields = fd}) (se {fields = fe})
+
+test5 = pretty 100 (ppr $ fromJust $ toDecl $ head [cunit| void f() { return; } |]) == "void f();"
