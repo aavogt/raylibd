@@ -74,3 +74,4 @@ Save changes to `main.c` and you can usually see the changes right away.
 
       };
 - [ ] changed initializers aren't considered in ReinitInplace/ ReinitRealloc?
+- [ ] `nix build .#wasm; cd result/www; emrun myapp.html` works but maybe `Makefile`s could work inside nix shell nix develop etc.
