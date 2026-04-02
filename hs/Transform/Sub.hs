@@ -16,6 +16,7 @@ import Data.Loc (noLoc)
 import qualified Data.Map as M
 import Data.Maybe
 import Data.Ord (comparing)
+import qualified Data.Set as S
 import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
@@ -23,7 +24,6 @@ import Text.PrettyPrint.Mainland.Class
 import Text.Show.Pretty (pPrint)
 import Transform.Build
 import Transform.Common
-import qualified Data.Set as S
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
@@ -146,7 +146,7 @@ funcParams op (Func a b c d e f) = op d <&> \b' -> Func a b c d e f
 funcParams op (OldFunc a b c [] e f g) = op (Params [] False noLoc) <&> \(Params ps _ _) -> OldFunc a b c (getId ps) e f g
 
 getId :: [Param] -> [Id]
-getId = map (\ (Param (Just a) _ _ _) -> a)
+getId = map (\(Param (Just a) _ _ _) -> a)
 
 funcName :: Lens' Func String
 funcName op (Func a (Id b c) d e f g) = op b <&> \b' -> Func a (Id b' c) d e f g
