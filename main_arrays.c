@@ -10,6 +10,21 @@
 // exclude includes for language-c's pass can't parse raylib.h
 
 // wishlist for arrays
+// dll.c from this file ie. `raylibd --once main_arrays.c` can now be loaded by
+// main_hot.c but there are many problems:
+//  dll.c:99:33: warning: excess elements in scalar initializer
+//   99 |         s->y[i] = (float) {400, 200};
+// void ReinitInPlace(struct prevstate *s, struct state *t) {
+// {
+// t->gravity = s->gravity;
+// t->rebound_n = s->rebound_n;
+// t->rebound_nt = s->rebound_nt;
+// t->rebound_p = s->rebound_p;
+// t->springk = s->springk;
+// t->speed_max = s->speed_max;
+// 1. they're const so they shouldn't be in struct state s
+// 2. they're in the same place, so there's no need to copy
+// 3. I changed one of them so the initializer has to run again
 
 #define LEN(x) (sizeof((x)) / sizeof((x)[0]))
 
