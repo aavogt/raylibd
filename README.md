@@ -25,6 +25,8 @@ Inside the demo directory:
 raylibd compiles `main.c` to `dll.c`, which in turn is loaded by `main_hot`
 Save changes to `main.c` and you can usually see the changes right away.
 
+main.c is a 2d simulation with two masses connected with an elastic bar with some damping driven bounces off the walls. You can try it in your browser [here](http://aavogt.github.io/sim), but unfortunately the wasm version is missing hot reloading.
+
 ## TODO
 
  - [ ] remove original variable declarations?
