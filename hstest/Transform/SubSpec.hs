@@ -20,7 +20,13 @@ import Unsafe.Coerce
 -- https://github.com/stackbuilders/hspec-golden/issues/64
 gold s v = do
   env <- SpecM (lift ask)
-  it s $ Test.Hspec.Golden.defaultGolden (intercalate "." (unsafeCoerce env) ++ "." ++ s) (pretty 1000 $ ppr v)
+  it s $ Test.Hspec.Golden.defaultGolden (sanitize $ intercalate "." (unsafeCoerce env) ++ "." ++ s) (pretty 1000 $ ppr v)
+
+sanitize = mapMaybe \case
+  '[' -> Just '_'
+  ']' -> Just '_'
+  ' ' -> Just '_'
+  x -> Just x
 
 spec :: Spec
 spec = do
