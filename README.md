@@ -73,3 +73,4 @@ Save changes to `main.c` and you can usually see the changes right away.
       int xs[14][2];
 
       };
+- [ ] changed initializers aren't considered in ReinitInplace/ ReinitRealloc?
