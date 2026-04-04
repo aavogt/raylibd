@@ -35,7 +35,7 @@ substituteTemplate from spec Prev {..} =
           "//DEFS" -> render (dropMainNonStatic spec from)
           "//STRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy mergedSF
           "//PREVSTRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy prevSF
-          "//REINITALLOCBODY_ALLOC" -> render reinitAllocBody
+          "//REINITALLOCBODY" -> render reinitAllocBody
           "//REINITINPLACEBODY" -> render reinitInPlaceBody
           "//INITBODY" -> render initBody
           "//STEPBODY" -> render stepBody

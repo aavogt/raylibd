@@ -34,7 +34,7 @@ s_top = s;
 }
 
 void ReinitAlloc(struct prevstate *s, struct state *t) {
-//REINITALLOCBODY_ALLOC
+//REINITALLOCBODY
 s_top = (void*)t;
 }
 
