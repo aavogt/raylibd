@@ -16,7 +16,6 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import Data.List
 import Unsafe.Coerce
-import Text.Show.Pretty
 
 -- https://github.com/stackbuilders/hspec-golden/issues/64
 gold s v = do
@@ -29,7 +28,6 @@ goldText s v = do
   it s $ Test.Hspec.Golden.defaultGolden (sanitize $ intercalate "." (unsafeCoerce env) ++ "." ++ s) v
 
 goldSF :: String -> [StateField] -> Spec
-
 goldSF s v = goldText s (renderDecls $ buildStateMembers $ uniqueDummy v)
 
 renderDecls :: Pretty a => [a] -> String
@@ -38,12 +36,11 @@ renderDecls xs = concatMap ((++ ";\n") . render) xs
 render :: Pretty a => a -> String
 render x = pretty 120 $ ppr x
 
-renderBodyLines :: [Stm] -> Stm
-renderBodyLines stms = Block (map BlockStm stms) noLoc
-
 sanitize = mapMaybe \case
   '[' -> Just '_'
   ']' -> Just '_'
+  '-' -> Nothing
+  '>' -> Just '_'
   ' ' -> Just '_'
   x -> Just x
 
@@ -124,11 +121,8 @@ spec = do
         fc = fb `mergeSF` fields sc
         fd = fc `mergeSF` fields sd
         fe = fd `mergeSF` fields se
-    gold "a->b" $ renderBodyLines (reinitAllocStmts (Just sa {fields = fa}) (sb {fields = fb}))
-    gold "b->c" $ renderBodyLines (reinitAllocStmts (Just sb {fields = fb}) (sc {fields = fc}))
-    gold "c->d" $ renderBodyLines (reinitAllocStmts (Just sc {fields = fc}) (sd {fields = fd}))
-    gold "d->e" $ renderBodyLines (reinitAllocStmts (Just sd {fields = fd}) (se {fields = fe}))
-    gold "a->b in place" $ renderBodyLines (reinitInPlaceStmts (Just sa {fields = fa}) (sb {fields = fb}))
-    gold "b->c in place" $ renderBodyLines (reinitInPlaceStmts (Just sb {fields = fb}) (sc {fields = fc}))
-    gold "c->d in place" $ renderBodyLines (reinitInPlaceStmts (Just sc {fields = fc}) (sd {fields = fd}))
-    gold "d->e in place" $ renderBodyLines (reinitInPlaceStmts (Just sd {fields = fd}) (se {fields = fe}))
+    let g s x y = gold s $ Block (map BlockStm (reinitAllocStmts (Just x) y)) noLoc
+    g "a->b" sa {fields = fa} sb {fields = fb}
+    g "b->c" sb {fields = fb} sc {fields = fc}
+    g "c->d" sc {fields = fc} sd {fields = fd}
+    g "d->e" sd {fields = fd} se {fields = fe}
