@@ -6,7 +6,7 @@ import Test.Hspec
 import qualified Test.Hspec.Golden
 import Language.C.Quote.C
 import Transform
-import Text.PrettyPrint.Mainland hiding (render)
+import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class
 import Data.Maybe
 import Language.C.Quote
@@ -18,9 +18,7 @@ import Data.List
 import Unsafe.Coerce
 
 -- https://github.com/stackbuilders/hspec-golden/issues/64
-gold s v = do
-  env <- SpecM (lift ask)
-  it s $ Test.Hspec.Golden.defaultGolden (sanitize $ intercalate "." (unsafeCoerce env) ++ "." ++ s) (pretty 1000 $ ppr v)
+gold s v = goldText s (pretty 1000 (ppr v))
 
 goldText :: String -> String -> Spec
 goldText s v = do
@@ -31,10 +29,7 @@ goldSF :: String -> [StateField] -> Spec
 goldSF s v = goldText s (renderDecls $ buildStateMembers $ uniqueDummy v)
 
 renderDecls :: Pretty a => [a] -> String
-renderDecls xs = concatMap ((++ ";\n") . render) xs
-
-render :: Pretty a => a -> String
-render x = pretty 120 $ ppr x
+renderDecls xs = concatMap ((++ ";\n") . pretty 120 . ppr) xs
 
 sanitize = mapMaybe \case
   '[' -> Just '_'
