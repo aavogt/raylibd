@@ -23,6 +23,24 @@ gold s v = do
   env <- SpecM (lift ask)
   it s $ Test.Hspec.Golden.defaultGolden (sanitize $ intercalate "." (unsafeCoerce env) ++ "." ++ s) (pretty 1000 $ ppr v)
 
+goldText :: String -> String -> Spec
+goldText s v = do
+  env <- SpecM (lift ask)
+  it s $ Test.Hspec.Golden.defaultGolden (sanitize $ intercalate "." (unsafeCoerce env) ++ "." ++ s) v
+
+goldSF :: String -> [StateField] -> Spec
+
+goldSF s v = goldText s (renderDecls $ buildStateMembers $ uniqueDummy v)
+
+renderDecls :: Pretty a => [a] -> String
+renderDecls xs = concatMap ((++ ";\n") . render) xs
+
+render :: Pretty a => a -> String
+render x = pretty 120 $ ppr x
+
+renderBodyLines :: [Stm] -> Stm
+renderBodyLines stms = Block (map BlockStm stms) noLoc
+
 sanitize = mapMaybe \case
   '[' -> Just '_'
   ']' -> Just '_'
@@ -68,71 +86,49 @@ spec = do
       gold "ast" const
       gold "onlyz" $ buildStateMembers $ fields (buildStateSpec const)
 
-test3 = do
-  let a = [cunit| float xs[2]; char n; |]
-  let b = [cunit| float xs[3]; char n; |]
-  let c = [cunit| float xs[4]; char n; |]
-  let d = [cunit| float xs[3]; char n; |]
-  let e = [cunit| float xs[2]; char n; |]
+  describe "mergeSF" do
+    let a = [cunit| float xs[2]; char n; |]
+        b = [cunit| float xs[3]; char n; |]
+        c = [cunit| float xs[4]; char n; |]
+        d = [cunit| float xs[3]; char n; |]
+        e = [cunit| float xs[2]; char n; |]
+        sa = buildStateSpec a
+        sb = buildStateSpec b
+        sc = buildStateSpec c
+        sd = buildStateSpec d
+        se = buildStateSpec e
+        fa = fields sa
+        fb = mergeSF (fields sa) (fields sb)
+        fc = fb `mergeSF` fields sc
+        fd = fc `mergeSF` fields sd
+        fe = fd `mergeSF` fields se
+    goldSF "state_a" fa
+    goldSF "state_b" fb
+    goldSF "state_c" fc
+    goldSF "state_d" fd
+    goldSF "state_e" fe
 
-  let sa = buildStateSpec a
-  let sb = buildStateSpec b
-  let sc = buildStateSpec c
-  let sd = buildStateSpec d
-  let se = buildStateSpec e
-
-  let fa = fields sa
-  let fb = mergeSF (fields sa) (fields sb)
-  let fc = fb `mergeSF` fields sc
-  let fd = fc `mergeSF` fields sd
-  let fe = fd `mergeSF` fields se
-  putStrLn "struct state_a {"
-  ppMembers fa
-  putStrLn "} struct state_b {"
-  ppMembers fb
-  putStrLn "} struct state_c {"
-  ppMembers fc
-  putStrLn "} struct state_d {"
-  ppMembers fd
-  putStrLn "} struct state_e {"
-  ppMembers fe
-  putStrLn "}"
-
-ppMembers = putStrLn . renderDecls . buildStateMembers . uniqueDummy
-renderDecls xs = concatMap ((++ ";\n") . render) xs
-
-render x = pretty 120 $ ppr x
-renderBody stms = putStrLn $ render $ Block (map BlockStm stms) noLoc
-showReinit prev spec = do
-        putStrLn "-- ReinitAlloc"
-        renderBody (reinitAllocStmts prev spec)
-        putStrLn "-- ReinitInPlace"
-        renderBody (reinitInPlaceStmts prev spec)
-
-test4 = do
-  let a = [cunit| float xs[2]; char n; |]
-  let b = [cunit| float xs[3]; char n; |]
-  let c = [cunit| float xs[4]; char n; |]
-  let d = [cunit| float xs[3]; char n; |]
-  let e = [cunit| float xs[2]; char n; |]
-
-  let sa = buildStateSpec a
-  let sb = buildStateSpec b
-  let sc = buildStateSpec c
-  let sd = buildStateSpec d
-  let se = buildStateSpec e
-
-  let fa = fields sa
-  let fb = mergeSF (fields sa) (fields sb)
-  let fc = fb `mergeSF` fields sc
-  let fd = fc `mergeSF` fields sd
-  let fe = fd `mergeSF` fields se
-
-  putStrLn "====== a->b ======"
-  showReinit (Just sa {fields = fa}) (sb {fields = fb})
-  putStrLn "====== b->c ======"
-  showReinit (Just sb {fields = fb}) (sc {fields = fc})
-  putStrLn "====== c->d ======"
-  showReinit (Just sc {fields = fc}) (sd {fields = fd})
-  putStrLn "====== d->e ======"
-  showReinit (Just sd {fields = fd}) (se {fields = fe})
+  describe "reinit" do
+    let a = [cunit| float xs[2]; char n; |]
+        b = [cunit| float xs[3]; char n; |]
+        c = [cunit| float xs[4]; char n; |]
+        d = [cunit| float xs[3]; char n; |]
+        e = [cunit| float xs[2]; char n; |]
+        sa = buildStateSpec a
+        sb = buildStateSpec b
+        sc = buildStateSpec c
+        sd = buildStateSpec d
+        se = buildStateSpec e
+        fa = fields sa
+        fb = mergeSF (fields sa) (fields sb)
+        fc = fb `mergeSF` fields sc
+        fd = fc `mergeSF` fields sd
+        fe = fd `mergeSF` fields se
+    gold "a->b" $ renderBodyLines (reinitAllocStmts (Just sa {fields = fa}) (sb {fields = fb}))
+    gold "b->c" $ renderBodyLines (reinitAllocStmts (Just sb {fields = fb}) (sc {fields = fc}))
+    gold "c->d" $ renderBodyLines (reinitAllocStmts (Just sc {fields = fc}) (sd {fields = fd}))
+    gold "d->e" $ renderBodyLines (reinitAllocStmts (Just sd {fields = fd}) (se {fields = fe}))
+    gold "a->b in place" $ renderBodyLines (reinitInPlaceStmts (Just sa {fields = fa}) (sb {fields = fb}))
+    gold "b->c in place" $ renderBodyLines (reinitInPlaceStmts (Just sb {fields = fb}) (sc {fields = fc}))
+    gold "c->d in place" $ renderBodyLines (reinitInPlaceStmts (Just sc {fields = fc}) (sd {fields = fd}))
+    gold "d->e in place" $ renderBodyLines (reinitInPlaceStmts (Just sd {fields = fd}) (se {fields = fe}))
