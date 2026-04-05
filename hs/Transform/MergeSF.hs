@@ -22,8 +22,26 @@ mergeSF old new = trimTrailingDummies (reused ++ remaining)
           | f <- old
         ]
 
+    newFieldMap =
+      M.fromList
+        [ ((fieldOrigName f, fieldScope f), f)
+          | f <- new
+        ]
+
+    lookupPrevField field = M.lookup (fieldOrigName field, fieldScope field) oldFieldMap
+
+    lookupNewField field = M.lookup (fieldOrigName field, fieldScope field) newFieldMap
+
+    preferNewInit field =
+      case lookupNewField field of
+        Just nf ->
+          case fieldInit nf of
+            Just _ -> field {fieldInit = fieldInit nf}
+            Nothing -> field
+        Nothing -> field
+
     dummyWhenMissing o@StateField {..} oStr
-      | oStr `S.member` sameDeclSet = o
+      | oStr `S.member` sameDeclSet = preferNewInit o
       | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, fieldMoved = False, ..}
 
     reuseDummies fields newFields = foldl' reuse (fields, []) newFields
@@ -32,8 +50,6 @@ mergeSF old new = trimTrailingDummies (reused ++ remaining)
           case bestDummyIndex newField fieldsAcc of
             Just idx -> (replaceAt idx (markMoved newField) fieldsAcc, acc)
             Nothing -> (fieldsAcc, acc ++ [newField])
-
-    lookupPrevField field = M.lookup (fieldOrigName field, fieldScope field) oldFieldMap
 
     markMoved field =
       case lookupPrevField field of

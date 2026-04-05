@@ -2,6 +2,7 @@
 module Transform.SubSpec where
 
 import Transform.Sub
+import Transform.MergeSF
 import Test.Hspec
 import qualified Test.Hspec.Golden
 import Language.C.Quote.C
@@ -100,6 +101,7 @@ spec = do
     goldSF "state_d" fd
     goldSF "state_e" fe
 
+  let g s x y = gold s $ Block (map BlockStm (reinitAllocStmts (Just x) y)) noLoc
   describe "reinit" do
     let a = [cunit| float xs[2]; char n; |]
         b = [cunit| float xs[3]; char n; |]
@@ -116,8 +118,17 @@ spec = do
         fc = fb `mergeSF` fields sc
         fd = fc `mergeSF` fields sd
         fe = fd `mergeSF` fields se
-    let g s x y = gold s $ Block (map BlockStm (reinitAllocStmts (Just x) y)) noLoc
     g "a->b" sa {fields = fa} sb {fields = fb}
     g "b->c" sb {fields = fb} sc {fields = fc}
     g "c->d" sc {fields = fc} sd {fields = fd}
     g "d->e" sd {fields = fd} se {fields = fe}
+
+  describe "mergeSF initializers" do
+    let a = [cunit| float x = 1; |]
+    let b = [cunit| float x = 2; |]
+        sa = buildStateSpec a
+        sb = buildStateSpec b
+        fa = fields sa
+        fb = mergeSF (fields sa) (fields sb)
+        r = reinitInPlaceStmts (Just sa) sb{ fields = fb }
+    g "x=1 changed to x=2" sa sb{ fields = fb }
