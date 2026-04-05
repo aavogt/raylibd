@@ -21,6 +21,7 @@ executable raylibd
       Transform
       Transform.Build
       Transform.Common
+      Transform.MergeSF
       Transform.Sub
       Paths_raylibd
   hs-source-dirs:
@@ -62,7 +63,9 @@ test-suite hspec
       Transform
       Transform.Build
       Transform.Common
+      Transform.MergeSF
       Transform.Sub
+      Transform.BuildSpec
       Transform.SubSpec
       Paths_raylibd
   hs-source-dirs:
