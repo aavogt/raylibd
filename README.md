@@ -75,5 +75,4 @@ main.c is a 2d simulation with two masses connected with an elastic bar with som
       int xs[14][2];
 
       };
-- [ ] changed initializers aren't considered in ReinitInplace/ ReinitRealloc?
 - [ ] `nix build .#wasm; cd result/www; emrun myapp.html` works but maybe `Makefile`s could work inside nix shell nix develop etc.
