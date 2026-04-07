@@ -1,3 +1,4 @@
+// user main.c + template.c -> dll.c
 // clang-format off
 //DECLS
 struct state {

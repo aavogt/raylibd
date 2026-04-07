@@ -1,6 +1,8 @@
 # Raylibd
 
-raylibd is for hot reloading ordinary c raylib programs.
+raylibd hot-reloads c raylib programs
+
+## install
 
 Get ghc-9.6.7 and cabal-install 3.14.1.1 or similar from
 https://www.haskell.org/ghcup/install/
@@ -9,13 +11,15 @@ https://www.haskell.org/ghcup/install/
     cd raylibd
     cabal install
 
-    raylibd init demo
-    cd demo
+## use
+
+    raylibd init my_app
+    cd my_app
     make -j12 # downloads raygui&raylib into vendor/raylib/, and runs main_hot
 
 Inside the demo directory:
 
-      demo
+      my_app
       ├── main.c
       ├── main_hot.c
       ├── Makefile
@@ -23,13 +27,16 @@ Inside the demo directory:
           └── Makefile
 
 raylibd compiles `main.c` to `dll.c`, which in turn is loaded by `main_hot`
-Save changes to `main.c` and you can usually see the changes right away.
+Save changes to `main.c` and you should be able to see the effects right away.
 
-main.c is a 2d simulation with two masses connected with an elastic bar with some damping driven bounces off the walls. You can try it in your browser [here](http://aavogt.github.io/sim), but unfortunately the wasm version is missing hot reloading.
+The initial main.c is a 2d simulation with two masses connected with an elastic
+bar with some damping driven bounces off the walls. You can try it in your
+browser [here](http://aavogt.github.io/sim), but unfortunately the wasm version
+is missing hot reloading.
 
 ## TODO
 
- - [ ] remove original variable declarations?
+ - [ ] remove unused original variable declarations copied into dll.c
  - [ ] #line pragmas
  - [ ] hygiene
 
