@@ -1,3 +1,5 @@
+// main_hot is part of raylibd
+// edit main.c instead
 #include "dll.c"
 #include <dlfcn.h>
 #include <stdbool.h>

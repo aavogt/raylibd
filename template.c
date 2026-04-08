@@ -1,4 +1,5 @@
-// user main.c + template.c -> dll.c
+// DO NOT EDIT
+// raylibd generates dll.c from main.c
 // clang-format off
 //DECLS
 struct state {
