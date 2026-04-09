@@ -17,6 +17,7 @@ import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Class
 import Data.List
 import Unsafe.Coerce
+import Text.Show.Pretty
 
 -- https://github.com/stackbuilders/hspec-golden/issues/64
 gold s v = goldText s (pretty 1000 (ppr v))
@@ -132,3 +133,12 @@ spec = do
         fb = mergeSF (fields sa) (fields sb)
         r = reinitInPlaceStmts (Just sa) sb{ fields = fb }
     g "x=1 changed to x=2" sa sb{ fields = fb }
+
+test1 = do
+  let m = [cunit| void f() { typename FILE *w1; FILE *w2; } void main() { typename FILE *x; static int z = 0; } |]
+  pPrint m
+  let ok s = all (`notElem` s) "w" && all (`elem` s) "xz"
+  let s = renderDecls $ buildStateMembers $ fields $ buildStateSpec m
+  putStrLn s
+  print $ ok s
+  putStrLn "but missing typename on output"

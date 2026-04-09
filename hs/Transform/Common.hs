@@ -63,6 +63,7 @@ data StateField = StateField
     fieldInit :: Maybe Initializer,
     fieldScope :: Maybe String,
     fieldArraySize :: [Const],
+    fieldDecl :: Decl,
     fieldMoved :: Bool
   }
   deriving (Show)
@@ -163,6 +164,7 @@ fieldFromDecl specs scope (Init ident decl _ initVal _ _)
                 fieldInit = initVal,
                 fieldScope = scope,
                 fieldArraySize = arraySize,
+                fieldDecl = decl,
                 fieldMoved = False
               }
 fieldFromDecl _ _ _ = Nothing
@@ -216,8 +218,7 @@ buildStateMembers = map buildDecl
   where
     buildDecl StateField {..} =
       let declSpec = DeclSpec [] [] fieldType noLoc
-          declRoot = foldr (\x y -> Array [] (ArraySize False (Const x noLoc) noLoc) y noLoc) (DeclRoot noLoc) fieldArraySize
-          initDecl = Init (mkIdent fieldName) declRoot Nothing Nothing [] noLoc
+          initDecl = Init (mkIdent fieldName) fieldDecl Nothing Nothing [] noLoc
        in InitGroup declSpec [] [initDecl] noLoc
 
 mkIdent :: String -> Id

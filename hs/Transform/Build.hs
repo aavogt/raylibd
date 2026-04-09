@@ -57,7 +57,7 @@ collectStaticLocals tu =
       | FuncDef (Fun fn items) _ <- tu ^.. template,
         InitGroup specs _ inits _ <- items ^.. template,
         isNonConstSpec specs,
-        isStaticSpec specs,
+        fn == "main" || isStaticSpec specs,
         initDecl <- inits
     ]
 
