@@ -19,6 +19,7 @@ executable raylibd
   other-modules:
       ParseTD
       Transform
+      Transform.Assets
       Transform.Build
       Transform.Common
       Transform.MergeSF
@@ -45,12 +46,15 @@ executable raylibd
     , directory
     , filepath
     , fsnotify <0.4
+    , generic-lens
     , language-c-quote
     , lens
     , mainland-pretty
     , pretty-show
     , process
     , srcloc
+    , syb
+    , syz
     , time
     , transformers
   default-language: Haskell2010
@@ -61,6 +65,7 @@ test-suite hspec
   other-modules:
       ParseTD
       Transform
+      Transform.Assets
       Transform.Build
       Transform.Common
       Transform.MergeSF
@@ -92,6 +97,7 @@ test-suite hspec
     , directory
     , filepath
     , fsnotify <0.4
+    , generic-lens
     , hspec
     , hspec-core
     , hspec-golden
@@ -101,6 +107,8 @@ test-suite hspec
     , pretty-show
     , process
     , srcloc
+    , syb
+    , syz
     , time
     , transformers
   default-language: Haskell2010
