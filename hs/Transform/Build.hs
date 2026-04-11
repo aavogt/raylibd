@@ -22,10 +22,11 @@ import Data.Maybe
 import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Transform.Common
+import Transform.Assets (rewriteAssetLoads)
 
 -- Collect globals + static locals and build derived rewrite info.
 buildStateSpec :: [Definition] -> StateSpec
-buildStateSpec ast =
+buildStateSpec (rewriteAssetLoads -> ast) =
   let globals = collectGlobalVars ast
       statics = collectStaticLocals ast
       fields = uniqueDummy $ toStateFields (globals <> statics)

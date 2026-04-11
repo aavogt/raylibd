@@ -22,6 +22,8 @@ typedef struct {
 } Plugin;
 Plugin p = {0};
 
+const int ASSET_POLL_FRAMES = 1; // check assets every N frames
+
 bool mtime_changed(const char *p) {
   static struct timespec prev;
   struct timespec cur;
@@ -74,7 +76,13 @@ int main(int argc, char **argv) {
   p.api->Init(s);
 
   int frame = 0;
+  int asset_frame = 0;
   while (p.api->Step(s)) {
+    // poll asset mtimes
+    if (asset_frame++ >= ASSET_POLL_FRAMES) {
+      p.api->ReloadAssets(s);
+      asset_frame = 0;
+    }
     if (frame++ >= MTIME_SKIP_FRAMES) {
       if (mtime_changed("dll.so")) {
         printf("main_hot reloaded\n");

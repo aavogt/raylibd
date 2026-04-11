@@ -14,9 +14,7 @@ dependencies:
     - srcloc
     - pretty-show
     - transformers
-    - syz
-    - syb
-    - generic-lens
+    - PyF
 
 
 data-files:
@@ -37,6 +35,7 @@ default-extensions:
   - RecordWildCards
   - TupleSections
   - ViewPatterns
+  - ScopedTypeVariables
 
 executable:
   main: main.hs

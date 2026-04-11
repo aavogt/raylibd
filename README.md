@@ -84,26 +84,5 @@ is missing hot reloading.
       };
 - [ ] `nix build .#wasm; cd result/www; emrun myapp.html` works but maybe `Makefile`s could work inside nix shell nix develop etc.
 - [ ] `main () { RenderTexture2D rtA = f(); while(true){ rtA; }}` Step() has an undefined rtA. The workaround is `static RenderTexture2D rtA; rtA = f();`
-- [ ] shaders, textures, models aren't even watched
-
-### Asset & Shader Hot-Reload Plan option 1. more haskell
-
-
-String literals in `main.c` with known extensions (`.fs`, `.vs`, `.glsl`, `.png`, `.obj`, `.gltf`, `.ttf`, `.wav`, etc.) are extracted from the AST and written to `dll.assets`.
-
-**Phase A** — `Transform/Assets.hs`: traverse the AST for `StringConst` nodes, filter by extension, return `[(var_name, scope, path, load_call)]`.
-
-**Phase B** — `hs/main.hs`: after writing `dll.c`, also write `dll.assets` (one path per line).
-
-**Phase C** — `main_hot.c`: on dll reload, read `dll.assets`; poll `stat()` each asset path every N frames.
-
-**Phase D** — `template.c` + codegen: add `ReloadAsset(struct state *s, const char *path)` to VTable. Generated body does `strcmp` on each known path and calls the matching `Unload*/Load*` pair.
-
-**Phase E** — shader vs asset: shaders (`.fs`/`.vs`/`.glsl`) → `UnloadShader` + `LoadShader`; textures → `UnloadTexture` + `LoadTexture`; etc. No gcc recompile needed — just runtime reload inside the dll.
-
-Polling happens in `main_hot.c` alongside the existing `dll.so` mtime check. Asset list refreshes on each dll reload.
-
-### Asset & Shader Option 2 more c
-
-raylibd rewrites LoadShader to LoadShader2, LoadTexture to LoadTexture2 etc.. 
-These register their arguments and results in struct state.
+- [ ] LoadFontEx, LoadAudioStream take extra arguments to be stored in AssetSlot
+- [ ] rewriteAssetLoads matches `sh = LoadShader(vs, fs);` should also match `Shader sh = LoadShader(vs, fs);`

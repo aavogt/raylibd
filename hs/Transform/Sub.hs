@@ -22,12 +22,14 @@ import Transform.Build
 import Transform.Common
 import Debug.Trace
 
+import Transform.Assets
+import Transform.Assets.Macro
 import Transform.MergeSF
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
 substituteTemplate :: [Definition] -> StateSpec -> Prev -> (Prev, String -> String)
-substituteTemplate from spec Prev {..} =
+substituteTemplate (rewriteAssetLoads -> from) spec Prev {..} =
   let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls xs = concatMap ((++ ";\n") . render) xs
@@ -43,6 +45,8 @@ substituteTemplate from spec Prev {..} =
           "//INITBODY" -> render initBody
           "//STEPBODY" -> render stepBody
           "//UNINITBODY" -> render uninitBody
+          "//ASSETWRAPPERS" -> assetWrappersC
+          "//ASSETRELOADSWITCHKIND" -> assetReloadSwitchKind
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
 

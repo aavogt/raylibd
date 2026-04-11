@@ -20,6 +20,7 @@ executable raylibd
       ParseTD
       Transform
       Transform.Assets
+      Transform.Assets.Macro
       Transform.Build
       Transform.Common
       Transform.MergeSF
@@ -38,23 +39,22 @@ executable raylibd
       RecordWildCards
       TupleSections
       ViewPatterns
+      ScopedTypeVariables
   build-depends:
-      base
+      PyF
+    , base
     , bytestring
     , cmdargs
     , containers
     , directory
     , filepath
     , fsnotify <0.4
-    , generic-lens
     , language-c-quote
     , lens
     , mainland-pretty
     , pretty-show
     , process
     , srcloc
-    , syb
-    , syz
     , time
     , transformers
   default-language: Haskell2010
@@ -66,6 +66,7 @@ test-suite hspec
       ParseTD
       Transform
       Transform.Assets
+      Transform.Assets.Macro
       Transform.Build
       Transform.Common
       Transform.MergeSF
@@ -87,17 +88,18 @@ test-suite hspec
       RecordWildCards
       TupleSections
       ViewPatterns
+      ScopedTypeVariables
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:
-      base
+      PyF
+    , base
     , bytestring
     , cmdargs
     , containers
     , directory
     , filepath
     , fsnotify <0.4
-    , generic-lens
     , hspec
     , hspec-core
     , hspec-golden
@@ -107,8 +109,6 @@ test-suite hspec
     , pretty-show
     , process
     , srcloc
-    , syb
-    , syz
     , time
     , transformers
   default-language: Haskell2010
