@@ -35,7 +35,7 @@ watchmode =
         words
           "bool Vector2  Vector3  Vector4  Matrix  Color  Rectangle  Image  Texture  RenderTexture  NPatchInfo  GlyphInfo  Font  Camera2D  Camera3D \
           \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
-          \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList"
+          \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList RenderTexture2D"
           &= help "override raylib typedef struct",
       typedefs_extra = [] &= help "extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges",
       echo = False &= help "echo the generated file to stdout",
