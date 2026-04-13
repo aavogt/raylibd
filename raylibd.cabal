@@ -9,7 +9,7 @@ version:        0.0.0
 build-type:     Simple
 data-files:
     main.c
-    template.c
+    dll_template.c
     main_hot.c
     Makefile
     vendor/Makefile

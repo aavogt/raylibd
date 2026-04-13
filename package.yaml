@@ -19,7 +19,7 @@ dependencies:
 
 data-files:
   - main.c
-  - template.c
+  - dll_template.c
   - main_hot.c
   - Makefile
   - vendor/Makefile

@@ -85,7 +85,7 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
      in readFile inputmain <&> unlines . takeUntilEndif 0 False . lines
 
   prev <- newIORef (Prev Nothing [])
-  templatec <- getDataFileName "template.c"
+  templatec <- getDataFileName "dll_template.c"
   let reloadMainC = do
         let allTypedefs = concatMap split (typedefs ++ typedefs_extra)
         result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) allTypedefs inputmain
