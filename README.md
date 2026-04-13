@@ -83,7 +83,6 @@ is missing hot reloading.
 
       };
 - [ ] `nix build .#wasm; cd result/www; emrun myapp.html` works but maybe `Makefile`s could work inside nix shell nix develop etc.
-- [ ] `main () { RenderTexture2D rtA = f(); while(true){ rtA; }}` Step() has an undefined rtA. The workaround is `static RenderTexture2D rtA; rtA = f();`
 - [ ] LoadFontEx, LoadAudioStream take extra arguments to be stored in AssetSlot
 - [ ] rewriteAssetLoads is wrong with `Shader sh[2] = { LoadShader(vs, fs); } ;`
 - [ ] hpc coverage
