@@ -88,3 +88,41 @@ is missing hot reloading.
 - [ ] hpc coverage
 - [ ] integration tests
 - [ ] raylibd init choose minimal minimal shader etc.?
+- [ ] syz might fix scoping, make the translation easier, avoid all the intermediate state....
+
+dll.c: In function ‘ReinitAlloc’:
+dll.c:290:13: error: ‘struct prevstate’ has no member named ‘w’
+  290 |     t->w = s->w;
+      |             ^~
+dll.c:291:15: error: ‘struct prevstate’ has no member named ‘h’; did you mean ‘sh’?
+  291 |     t->h = s->h;
+      |               ^
+      |               sh
+dll.c: In function ‘ReinitInPlace’:
+dll.c:304:13: error: ‘struct prevstate’ has no member named ‘w’
+  304 |     t->w = s->w;
+      |             ^~
+dll.c:305:15: error: ‘struct prevstate’ has no member named ‘h’; did you mean ‘sh’?
+  305 |     t->h = s->h;
+      |               ^
+
+
+- [ ] I went to far putting variables in main() into state. It goes wrong here:
+
+      if (ffmpeg_pipe) {
+        Image frame = LoadImageFromTexture(rtA.texture);
+        ImageFlipVertical(&frame); // raylib FBOs are flipped
+
+        fwrite(frame.data, 1, vidw * vidh * 4, ffmpeg_pipe);
+        UnloadImage(frame);
+      }
+
+      if (s->ffmpeg_pipe) {
+          Image frame = LoadImageFromTexture(s->rtA.texture);
+          
+          ImageFlipVertical(&s->frame);
+          fwrite(s->frame.data, 1, s->vidw * s->vidh * 4, s->ffmpeg_pipe);
+          UnloadImage(s->frame);
+      }
+
+  so I have to treat variables only defined/modified inside while() differently
