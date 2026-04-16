@@ -142,15 +142,16 @@ asArg v = Const (StringConst [pv] pv noLoc) noLoc
   where
     pv = pretty 10 (ppr v)
 
-rewrittenCompoundInitializers v = writerToMaybe . (traversed . _2 %%~ f)
+rewrittenCompoundInitializers v = asMaybe . (traversed . _2 %%~ f)
   where
-  writerToMaybe w = case runWriter w of
+  -- prevent an infinite loop by telling `rewrite`
+  -- that `f` didn't make any changes
+  asMaybe w = case runWriter w of
     (r, Any True) -> Just r
     _ -> Nothing
 
-  f = \case
-    ExpInitializer (FnCall (Var (Id loadShader _) _) args _) _
-      | loadShader `S.member` assetLoadNames -> do
+  f (ExpInitializer (FnCall (Var (Id loadShader _) _) args _) _)
+      | loadShader `S.member` assetLoadNames = do
           tell (Any True)
           return
             ( ExpInitializer
@@ -161,7 +162,7 @@ rewrittenCompoundInitializers v = writerToMaybe . (traversed . _2 %%~ f)
                 )
                 noLoc
             )
-    x -> return x
+  f x = return x
 
 instance Plated Exp
 
