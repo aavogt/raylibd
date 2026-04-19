@@ -56,9 +56,11 @@ executable raylibd
     , pretty-show
     , process
     , srcloc
+    , syb
     , syz
     , time
     , transformers
+    , zippers
   default-language: Haskell2010
 
 test-suite hspec
@@ -112,7 +114,9 @@ test-suite hspec
     , pretty-show
     , process
     , srcloc
+    , syb
     , syz
     , time
     , transformers
+    , zippers
   default-language: Haskell2010

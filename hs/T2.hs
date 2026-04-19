@@ -1,15 +1,35 @@
 -- here we're going to rewrite Transform/* to a single(?) pass
 -- push pop scope frames
--- 
+--
 -- todo :: Lens' Language.C.Syntax.Definition SimpDefinition
 --
 -- bring back most of:
 -- git diff 'ae2c8866686df0fd6627a72df7164717e06386dc~^1' ae2c8866686df0fd6627a72df7164717e06386dc
 --
-module T2() where
+-- 1. do I parse the template? so that
+--
+-- D ~ [Definition]
+-- substituteTemplate :: (d ~ [Definition]) => d -> s -> (s, d -> d)
+-- d -> d -> s -> (s, d)
+-- d -> State (s, d) ()
+-- d -> State s d
+--
+-- anyways, this rewrite is about name shadowing, and getting rid of StateSpec
+-- instead of looking up the thing in the StateSpec look it up in the AST directly
+-- which is supposed to help with testing because StateSpec gathers everything
+-- together so tests reference code they don't need.
+--
+-- normalization passes [Definition] -> [Definition]
+--
+--  t a = x, b = y;  ==>
+--  t a = x; t b = y;
+--
+-- fieldName becomes the actual name
+--
+{-# OPTIONS_GHC -fdefer-typed-holes -w #-}
 
-import Data.Generics.Zipper
-import Language.C.Syntax
+module T2 () where
+
 import Control.Applicative (Alternative (..))
 import Control.Lens hiding (Const)
 import Control.Lens.Extras
@@ -24,10 +44,13 @@ import Data.Maybe
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Set as Set
+import Debug.Trace
 import Language.C hiding (mkIdent)
+import qualified Language.C.Quote as C
 import Language.C.Quote.C
 import Language.C.Syntax
 import Text.Show.Pretty
+
 -- * zyb extras
 
 -- Generic "collect all matching zipper positions" since syz lacks this directly
@@ -61,40 +84,59 @@ upUntil z = do
     Just v -> Just (p, v)
     Nothing -> upUntil p
 
+upUntilf :: (Typeable b) => Zipper root -> (b -> Maybe b) -> Maybe (Zipper root)
+upUntilf z f = do
+  zu <- up z
+  case f =<< getHole zu of
+    Just b' -> Just (setHole b' zu)
+    Nothing -> upUntilf zu f
+
 -- TODO: Chase a variable argument to a StringConst
 stringConstsOf :: (Data root) => Zipper root -> Exp -> Maybe String
-stringConstsOf z (Const (StringConst _ s _) _) = Just s
-stringConstsOf z (Var (Id n _) _) = _ $ chase z n
+stringConstsOf z [cexp| $string:s |] = Just s
+stringConstsOf z [cexp| $id:n |] = _ $ chase z n
 
 chase z n = listToMaybe $ collectUL fs z
   where
-    fs y = initingStr n (getHole y) <|> (chase z =<< assignedFrom n (getHole y))
+    fs = undefined
 
 -- $> initingStr "xs" ([cunit| int xs[] = "ini"; |] ^? template)
 -- Just "ini"
 
-initingStr kn = initingStrP (n ==)
+initingStr n minit = initingStrP (n ==) =<< minit
 
-initingStrP p w = do
-  Init (Id n' _) _ _ (Just (ExpInitializer (Const (StringConst _ s _) _) _)) _ _ <- w
-  guard (p n')
-  Just s
+initingStrP p [cinit| $id:n = $string:s |] | p n = Just s
+initingStrP _ _ = Nothing
 
 -- $> assignedFrom "xs" ([cunit| void main() { xs = ys; } |] ^? template)
 -- Just "ys"
 
-assignedFrom n = assignedFromP (n ==)
+assignedFrom n mexp = assignedFromP (n ==) =<< mexp
 
-assignedFromP p w = do
-  Assign (Var (Id a _) _) _ (Var (Id b _) _) _ <- w
-  guard (p a)
-  Just b
+assignedFromP p [cexp| $id:a = $id:b |] | p a = Just b
+assignedFromP _ _ = Nothing
 
 valUpLeft :: (Data root) => String -> Zipper root -> Maybe String
 valUpLeft var z = listToMaybe $ collectUL _ z
 
+update n' ast
+  | Just [cexp| $id:n |] <- getHole ast,
+    n == n' = upUntilf ast \case
+      BlockStm _ -> Just (BlockStm [cstm| STM2; |])
+      _ -> Nothing
+update _ _ = Nothing
+
+-- vs template to find the outer then find the inner
+-- now it's messy
+-- and it's missing the function scope frame?
+-- which has to be updated by collectDR and upUntilf
+
 -- how much indirection to support? it's not adversarial
 indirections = do
+  let s1 =
+        [cunit| // comment
+          void main () { STM1; } |]
+  pPrint $ map fromZipper $ collectDR (update "STM1") (toZipper s1)
   let ex = [cunit| char xs[] = "name"; char ys[10]; char *zs = xs; void main() { memcpy(ys, "name2"); snprintf(); } |]
   -- pPrint ex
 
@@ -126,7 +168,7 @@ findCallContexts fnnames root = collectDR matchFnCall (toZipper root)
 
 -- ** strings in AST
 
-
+{-
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
 substituteTemplate :: [Definition] -> StateSpec -> Prev -> (Prev, String -> String)
@@ -150,3 +192,4 @@ substituteTemplate (rewriteAssetLoads -> from) spec Prev {..} =
           "//ASSETRELOADSWITCHKIND" -> assetReloadSwitchKind
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
+   -}
