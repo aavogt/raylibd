@@ -148,8 +148,6 @@ void ReloadAssets(struct state *s) {
        switch (s->_assets[_i].kind) {
 //ASSETRELOADSWITCHKIND
         };
-    // AssetFunc "LoadSound"       "UnloadSound"       1 1,
-    // AssetFunc "LoadWave"        "UnloadWave"        1 1,
     // AssetFunc "LoadMusicStream" "UnloadMusicStream" 1 1
      };
   }; 
