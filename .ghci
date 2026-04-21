@@ -1,2 +1,2 @@
 :set -ihstest -ihs
-:set -XBlockArguments -XDeriveDataTypeable -XFlexibleInstances -XLambdaCase -XNamedFieldPuns -XPatternSynonyms -XQuasiQuotes -XRecordWildCards -XTupleSections -XViewPatterns
+:set -XDeriveGeneric -XBlockArguments -XDeriveDataTypeable -XFlexibleInstances -XLambdaCase -XNamedFieldPuns -XPatternSynonyms -XQuasiQuotes -XRecordWildCards -XTupleSections -XViewPatterns

@@ -177,4 +177,4 @@ test1 = do
     typename Shader s2 = LoadShader(a,b), s3 = LoadShader(b, a);
     typename Shader s4[2] = { LoadShader(a,b), LoadShader(c,d), }; } |]
   putStrLn $ pretty 100 $ ppr (rewriteAssetLoads s)
-  return True
+  return False

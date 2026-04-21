@@ -45,15 +45,28 @@ fi
 
 
 srcdir=${1:-"hs"}
+export raylibd_datadir=.
+
+if [[ ! -d "dist-newstyle" ]]; then
+  cabal build
+fi
+
+paths_raylibd=$(find dist-newstyle -name "Paths_raylibd.hs" | awk '{ print length, $0 }' | sort -n | head -n1 | cut -d" " -f2-)
+if [[ -z "${paths_raylibd}" ]]; then
+  echo "Paths_raylibd.hs not found under dist-newstyle" >&2
+  exit 1
+fi
 
 clear
 files=()
 fns=()
 qualtest=()
+modules=()
 while IFS= read -r file; do
   mod=$(echo "$file" | sed 's|'$srcdir'/||; s|\.hs$||; s|/|.|g')
   fnames=$(grep -Eo '^test[_a-zA-Z0-9'\'']*' "$file" | sort -u || true)
   [ -z "$fnames" ] || files+=($file)
+  [ -z "$fnames" ] || modules+=($mod)
   for fname in $fnames; do
     fns+=$mod
     # TODO find the longest $mod.$fname and use that instead of 30
@@ -63,12 +76,18 @@ while IFS= read -r file; do
           bar 33 'v' ; \
           b <- $mod.$fname ; \
           bar (if b then 32 else 31) '^'; \
-          return $ if b then Left \"$mod.$fname\" else Right \"ghcid $file -T$mod.$fname\"")
+          return $ if b then Left \"$mod.$fname\" else Right \"ghcid $file $paths_raylibd -T$mod.$fname\"")
   done
 done < <(find hs/ -name "*.hs" | sort)
 
-ghci -v0 ${files[@]} <<< ':set prompt ""
+star_modules=()
+for mod in "${modules[@]}"; do
+  star_modules+=("*$mod")
+done
+
+ghci -v0 ${files[@]} -i$(dirname "$paths_raylibd") -ihs <<< ':set prompt ""
   :set prompt-cont ""
+  :module +'${star_modules[@]}'
   (ok,notok) <- Data.Either.partitionEithers <$> sequence [ '$(IFS=,; echo "${qualtest[*]}")' ]
   :{
   data Trie = Trie Bool [(String, Trie)]

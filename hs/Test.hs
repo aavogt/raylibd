@@ -16,7 +16,7 @@ import System.Posix.IO
 testRunWithStdin = do
   let txt = "basic\ntext going here342"
   x <- runWithStdin txt getContents
-  print (x == txt)
+  return (x == txt)
 
 testEIO :: IO Bool
 testEIO = do

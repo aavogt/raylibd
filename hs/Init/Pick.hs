@@ -36,7 +36,8 @@ testPicker = do
   print =<< runWithStdin "basic\ESC[5~\n" picker
   print =<< runWithStdin "basic\ESC[5~\ESC[B\n" picker
   print =<< runWithStdin "bas\DEL\DEL\DELtur\n" picker
-  runWithStdin "basicin\n" picker
+  print =<< runWithStdin "basicin\n" picker
+  return True
 
 picker :: IO (Maybe Picked)
 picker = do
