@@ -86,6 +86,7 @@ watch Init {..} = do
   putStrLn ("cd "++dest)
   setCurrentDirectory dest
   system "make compile_commands.json"
+  putStrLn $ "raylibd init complete: next step (cd "++dest ++ "; $TERM -e $EDITOR main.c & make)"
 
 watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1} \mgr -> do
   dir <- takeDirectory <$> makeAbsolute inputmain
