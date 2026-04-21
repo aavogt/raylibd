@@ -9,12 +9,6 @@
 #include <time.h>
 #endif
 
-// not really happy about the brush
-// part of the problem is that FPS is too low (30) so successive brush dots are
-// not connected rule 30 or 73 conway game of life the convolution blur isn't as
-// good though
-
-/// SetShaderValue / GetShaderLocation
 void shset(Shader sh_, const char *uniformName, const void *res,
            int uniformType) {
   int loc = GetShaderLocation(sh_, uniformName);
