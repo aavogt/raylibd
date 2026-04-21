@@ -7,7 +7,7 @@
 #include <stdio.h>
 #endif
 #include <stdbool.h>
-// see init/ for other templates/examples
+// exclude includes for language-c's pass can't parse raylib.h
 #define LEN(x) (sizeof((x)) / sizeof((x)[0]))
 
 const float gravity = 0.1, rebound_n = 1.1, rebound_nt = 0.90, rebound_p = 0.95,
