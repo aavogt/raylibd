@@ -13,56 +13,36 @@ https://www.haskell.org/ghcup/install/
 
 ## use
 
-    raylibd init my_app
+    raylibd init my_app -i 10 # use example init/10-*
     cd my_app
-    make -j12 # downloads raygui&raylib into vendor/raylib/, and runs main_hot
+    make -j12 # downloads raygui&raylib (if missing) into vendor/raylib/, and runs main_hot
 
-Inside the demo directory:
+The my_app is then a minimal fragment shader example:
 
       my_app
+      ├── 10-tint.fs
+      ├── compile_commands.json  # for clangd
+      ├── dll.c
+      ├── dll.so
       ├── main.c
+      ├── main_hot
       ├── main_hot.c
       ├── Makefile
       └── vendor
-          └── Makefile
+          ├── Makefile
+          └── raygui.h
 
-raylibd compiles `main.c` to `dll.c`, which in turn is loaded by `main_hot`
-Save changes to `main.c` and you should be able to see the effects right away.
-
-The initial main.c is a 2d simulation with two masses connected with an elastic
-bar with some damping driven bounces off the walls. You can try it in your
-browser [here](http://aavogt.github.io/sim), but unfortunately the wasm version
-is missing hot reloading.
+The default `make watch` target calls
+raylibd to turn `main.c` into `dll.c`. `main_hot` loads the `dll.so` which
+knows how to reload assets (including shaders), and to migrate state.
+Save changes to `main.c` or `10-tint.fs` and you should be able to see the effects right away.
 
 ## TODO
 
  - [ ] remove unused original variable declarations copied into dll.c
  - [ ] #line pragmas
- - [ ] hygiene
-
-        // Calling the parameter drag makes it become s_top->drag
-        int ndrag(Drag *pdrag) {
-          int n = 0;
-          for (int i = 0; i < 5; i++) {
-            if (!(pdrag->segs[i]))
-              n++;
-          }
-          return n;
-        }
-
-        void dragseg(Seg *seg) {
-          static Drag drag;
-          // start end etc.
-          // if (ndrag(&drag)
-          for (int j = 0; j < 2; j++) {
-            if (seg->sel[j] && seg->placed[j]) {
-              printf("moving a %d\n", j);
-              seg->p[j] = GetMousePosition();
-            }
-          }
-
-        }
-- [ ] nested arrays could reuse more space?
+ - [ ] https://github.com/aavogt/raylibd/blob/main/init/11-turing.c#L12 breaks if you rename sh_ to sh: hs/Transform/** doesn't know shadowing/scopes
+ - [ ] nested arrays could reuse more space?
 
       struct state {
       int nframe;
@@ -87,4 +67,3 @@ is missing hot reloading.
 - [ ] rewriteAssetLoads is wrong with `Shader sh[2] = { LoadShader(vs, fs); } ;`
 - [ ] hpc coverage
 - [ ] integration tests
-- [ ] raylibd init choose minimal minimal shader etc.?

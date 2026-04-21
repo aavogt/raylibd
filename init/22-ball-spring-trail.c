@@ -7,6 +7,7 @@
 #include <stdio.h>
 #endif
 #include <stdbool.h>
+// wasm version (without hot reloading) here: http://aavogt.github.io/sim
 
 #define LEN(x) (sizeof((x)) / sizeof((x)[0]))
 
