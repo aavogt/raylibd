@@ -13,11 +13,21 @@ data-files:
     main_hot.c
     Makefile
     vendor/Makefile
+    init/00-minimal.c
+    init/10-basicshader.c
+    init/10-tint.fs
+    init/11-brush.fs
+    init/11-step.fs
+    init/11-turing.c
+    init/22-ball-spring-trail.c
 
 executable raylibd
   main-is: main.hs
   other-modules:
+      Init.Pick
+      Init.PickAlign
       ParseTD
+      Test
       Transform
       Transform.Assets
       Transform.Assets.Macro
@@ -31,6 +41,7 @@ executable raylibd
   default-extensions:
       BlockArguments
       DeriveDataTypeable
+      DeriveGeneric
       FlexibleInstances
       LambdaCase
       NamedFieldPuns
@@ -42,10 +53,13 @@ executable raylibd
       ScopedTypeVariables
   build-depends:
       PyF
+    , ansi-terminal
+    , array
     , base
     , bytestring
     , cmdargs
     , containers
+    , deepseq
     , directory
     , filepath
     , fsnotify <0.4
@@ -57,13 +71,17 @@ executable raylibd
     , srcloc
     , time
     , transformers
+    , unix
   default-language: Haskell2010
 
 test-suite hspec
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Init.Pick
+      Init.PickAlign
       ParseTD
+      Test
       Transform
       Transform.Assets
       Transform.Assets.Macro
@@ -80,6 +98,7 @@ test-suite hspec
   default-extensions:
       BlockArguments
       DeriveDataTypeable
+      DeriveGeneric
       FlexibleInstances
       LambdaCase
       NamedFieldPuns
@@ -93,10 +112,13 @@ test-suite hspec
       hspec-discover:hspec-discover
   build-depends:
       PyF
+    , ansi-terminal
+    , array
     , base
     , bytestring
     , cmdargs
     , containers
+    , deepseq
     , directory
     , filepath
     , fsnotify <0.4
@@ -111,4 +133,5 @@ test-suite hspec
     , srcloc
     , time
     , transformers
+    , unix
   default-language: Haskell2010

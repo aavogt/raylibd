@@ -15,6 +15,10 @@ dependencies:
     - pretty-show
     - transformers
     - PyF
+    - ansi-terminal
+    - unix
+    - deepseq
+    - array
 
 
 data-files:
@@ -23,10 +27,12 @@ data-files:
   - main_hot.c
   - Makefile
   - vendor/Makefile
+  - init/*
 
 default-extensions:
   - BlockArguments
   - DeriveDataTypeable
+  - DeriveGeneric
   - FlexibleInstances
   - LambdaCase
   - NamedFieldPuns

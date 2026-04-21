@@ -1,12 +1,15 @@
+{- HLINT ignore "Redundant lambda" -}
+
 import Control.Concurrent
 import Control.Lens
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
-import Data.Functor ((<&>))
 import Data.IORef
 import Data.List
 import Data.Loc
+import Data.Maybe
+import Init.Pick
 import Language.C hiding (Init)
 import ParseTD
 import Paths_raylibd
@@ -17,18 +20,18 @@ import System.FSNotify
 import System.FilePath
 import System.IO
 import System.Process
-import Text.Show.Pretty
+import Text.Show.Pretty hiding (getDataDir)
 import Transform
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
-  | Init {inputmain :: String, dest :: Maybe FilePath, force :: Bool}
+  | Init { dest :: Maybe FilePath, force :: Bool, list :: Bool, index :: Maybe Int, rest :: [String]}
   deriving (Data)
 
 watchmode =
   Raylibd
-    { inputmain = "main.c" &= opt "main.c" &= typ "FILE" &= argPos 0,
-      outputmain = "dll.c",
+    { inputmain = "main.c" &= opt "main.c" &= typ "FILE=[main.c]" &= argPos 0,
+      outputmain = "dll.c" &= typ "FILE" &= help "override default dll.c",
       cflags = ["-std=gnu17", "-DRAYLIBD=0"] &= help "c preprocessor flags",
       cflags_extra = [],
       typedefs =
@@ -41,29 +44,49 @@ watchmode =
       echo = False &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
-    &= help "turn [FILE] into dll.c which is a "
+    &= help "watch main.c keeping dll.c updated"
 
 initmode =
   Init
-    { inputmain = "main.c" &= typ "FILE" &= opt "main.c",
-      dest = Nothing &= argPos 0,
-      force = False &= help "overwrite files"
+    { 
+      dest = Nothing,
+      list = False &= help "list main.c templates and exit",
+      index = Nothing &= help "pick main.c template by leading number ie. --index=0 for 00-minimal.c",
+      force = False &= help "overwrite files",
+      rest = [] &= args
     }
+    &= help "create a new project in ITEM/"
 
-main =
+main = do
   watch =<< cmdArgs (modes [watchmode &= auto, initmode])
 
 watch Init {..} = do
-  let addDest = maybe id (</>) dest
+  when list do
+    printList
+    exitSuccess
+  dest <- case maybeToList dest ++ rest of
+    [] -> do
+      putStrLn "enter the project directory:"
+      getLine
+    a:rest -> do
+      unless (null rest) $ putStrLn $ "unused: " ++ show rest
+      return a
+  copyMainc <- case index of
+    Just idx -> pickByIndex idx
+    Nothing -> hSetBuffering stdin NoBuffering >> picker <* hSetBuffering stdin LineBuffering
   let copyData n = do
         p <- getDataFileName n
-        let d = addDest n
-        createDirectoryIfMissing True (takeDirectory d)
+        let d = dest </> n
+        createDirectoryIfMissing True dest
         e <- doesFileExist d
         when (not e || force) $ copyFile p d
-  mapM_ copyData $ words "main.c main_hot.c Makefile vendor/Makefile"
-  for_ dest setCurrentDirectory
+  let mainc | isNothing copyMainc = ["main.c"] | otherwise = []
+  mapM_ copyData $ mainc ++ words "main_hot.c Makefile vendor/Makefile"
+  for_ copyMainc (copyPicked dest)
+  putStrLn ("cd "++dest)
+  setCurrentDirectory dest
   system "make compile_commands.json"
+
 watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1} \mgr -> do
   dir <- takeDirectory <$> makeAbsolute inputmain
   let cppFlags = "-MM" : cflags ++ cflags_extra
