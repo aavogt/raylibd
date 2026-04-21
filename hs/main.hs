@@ -77,7 +77,7 @@ watch Init {..} = do
   let copyData n = do
         p <- getDataFileName n
         let d = dest </> n
-        createDirectoryIfMissing True dest
+        createDirectoryIfMissing True (takeDirectory d)
         e <- doesFileExist d
         when (not e || force) $ copyFile p d
   let mainc | isNothing copyMainc = ["main.c"] | otherwise = []
