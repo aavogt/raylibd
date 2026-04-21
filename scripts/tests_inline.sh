@@ -36,6 +36,14 @@
 # write-ghc-environment-files: always
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$(basename "$script_dir")" == "scripts" ]]; then
+  cd "$script_dir/.."
+else
+  cd "$script_dir"
+fi
+
+
 srcdir=${1:-"hs"}
 
 clear
