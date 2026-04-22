@@ -52,14 +52,25 @@ collectGlobalVars decls =
 
 collectStaticLocals :: [Definition] -> [StateField]
 collectStaticLocals tu =
-  catMaybes
-    [ fieldFromDecl specs initDecl
-      | FuncDef (Fun fn items) _ <- tu ^.. template,
-        InitGroup specs _ inits _ <- items ^.. template,
-        isNonConstSpec specs,
-        fn == "main" || isStaticSpec specs,
-        initDecl <- inits
-    ]
+  catMaybes (mainLocals <> staticLocals)
+  where
+    mainLocals =
+      [ fieldFromDecl specs initDecl
+        | FuncDef (Fun fn items) _ <- tu,
+          fn == "main",
+          BlockDecl (InitGroup specs _ inits _) <- items,
+          isNonConstSpec specs,
+          initDecl <- inits
+      ]
+
+    staticLocals =
+      [ fieldFromDecl specs initDecl
+        | FuncDef (Fun _ items) _ <- tu ^.. template,
+          InitGroup specs _ inits _ <- items ^.. template,
+          isNonConstSpec specs,
+          isStaticSpec specs,
+          initDecl <- inits
+      ]
 
 --------------------------------------------------------------------------------
 -- State derivation helpers
