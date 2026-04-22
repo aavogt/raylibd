@@ -1,3 +1,5 @@
+-- | a first pass called by Transform which renames variables
+-- so that nested scope frames don't shadow outer variables
 module Rename
   ( rename,
   )

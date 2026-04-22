@@ -19,11 +19,12 @@ import Transform.Assets.Macro
 import Transform.Build
 import Transform.Common
 import Transform.MergeSF
+import Rename (rename)
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
 substituteTemplate :: [Definition] -> StateSpec -> Prev -> (Prev, String -> String)
-substituteTemplate (rewriteAssetLoads -> from) spec Prev {..} =
+substituteTemplate (rewriteAssetLoads . rename -> from) spec Prev {..} =
   let render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls xs = concatMap ((++ ";\n") . render) xs
@@ -132,11 +133,11 @@ reinitAllocStmts (Just prevSpec) spec =
   where
     prevMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), f)
+        [ (fieldOrigName f, f)
           | f <- fields prevSpec
         ]
 
-    lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+    lookupPrevField f = M.lookup (fieldOrigName f) prevMap
 
     reinitFieldToNew field =
       case lookupPrevField field of
@@ -152,11 +153,11 @@ reinitInPlaceStmts (Just prevSpec) spec =
   where
     prevMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), f)
+        [ (fieldOrigName f, f)
           | f <- fields prevSpec
         ]
 
-    lookupPrevField f = M.lookup (fieldOrigName f, fieldScope f) prevMap
+    lookupPrevField f = M.lookup (fieldOrigName f) prevMap
 
     reinitFieldInPlace field =
       case lookupPrevField field of

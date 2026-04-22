@@ -9,10 +9,10 @@
 #include <time.h>
 #endif
 
-void shset(Shader sh_, const char *uniformName, const void *res,
+void shset(Shader sh, const char *uniformName, const void *res,
            int uniformType) {
-  int loc = GetShaderLocation(sh_, uniformName);
-  SetShaderValue(sh_, loc, res, uniformType);
+  int loc = GetShaderLocation(sh, uniformName);
+  SetShaderValue(sh, loc, res, uniformType);
 }
 
 Texture2D fillRedRandom(bool all_rows) {

@@ -18,19 +18,19 @@ mergeSF old new = trimTrailingDummies (reused ++ remaining)
     (reused, remaining) = reuseDummies expandedDummies (map snd notFound)
     oldFieldMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), f)
+        [ (fieldOrigName f, f)
           | f <- old
         ]
 
     newFieldMap =
       M.fromList
-        [ ((fieldOrigName f, fieldScope f), f)
+        [ (fieldOrigName f, f)
           | f <- new
         ]
 
-    lookupPrevField field = M.lookup (fieldOrigName field, fieldScope field) oldFieldMap
+    lookupPrevField field = M.lookup (fieldOrigName field) oldFieldMap
 
-    lookupNewField field = M.lookup (fieldOrigName field, fieldScope field) newFieldMap
+    lookupNewField field = M.lookup (fieldOrigName field) newFieldMap
 
     preferNewInit field =
       case lookupNewField field of
@@ -42,7 +42,7 @@ mergeSF old new = trimTrailingDummies (reused ++ remaining)
 
     dummyWhenMissing o@StateField {..} oStr
       | oStr `S.member` sameDeclSet = preferNewInit o
-      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldScope = Nothing, fieldMoved = False, ..}
+      | otherwise = StateField {fieldName = "", fieldInit = Nothing, fieldMoved = False, ..}
 
     reuseDummies fields newFields = foldl' reuse (fields, []) newFields
       where

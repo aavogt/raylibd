@@ -21,10 +21,11 @@ import Transform.Common
 import Transform.Assets (rewriteAssetLoads)
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class
+import Rename
 
 -- Collect globals + static locals and build derived rewrite info.
 buildStateSpec :: [Definition] -> StateSpec
-buildStateSpec (rewriteAssetLoads -> ast) =
+buildStateSpec (rewriteAssetLoads . rename -> ast) =
   let globals = collectGlobalVars ast
       statics = collectStaticLocals ast
       fields = uniqueDummy $ toStateFields (globals <> statics)
@@ -44,7 +45,7 @@ collectGlobalVars decls =
       isNonConstSpec specs,
       not (isStaticSpec specs),
       initDecl <- inits,
-      Just field <- [fieldFromDecl specs Nothing initDecl]
+      Just field <- [fieldFromDecl specs initDecl]
   ]
 
 -- ** `collectStaticLocals`
@@ -52,7 +53,7 @@ collectGlobalVars decls =
 collectStaticLocals :: [Definition] -> [StateField]
 collectStaticLocals tu =
   catMaybes
-    [ fieldFromDecl specs (Just fn) initDecl
+    [ fieldFromDecl specs initDecl
       | FuncDef (Fun fn items) _ <- tu ^.. template,
         InitGroup specs _ inits _ <- items ^.. template,
         isNonConstSpec specs,
@@ -98,7 +99,6 @@ toUseRewrite fs s =
     toRewrite field =
       UseRewrite
         { useName = fieldOrigName field,
-          useScope = fieldScope field,
           useExpr = mkMemberFrom s (fieldName field)
         }
 
@@ -131,3 +131,10 @@ test1 = do
   let d2 = pretty 120 $ ppr $ dropMainNonStatic s d
   putStrLn d2
   return(5 == length (lines d2))
+
+testScope :: IO Bool
+testScope = do
+  let d = rename [cunit| int v = 2; int f(int v) { { int v = 3; return v+v; }; return v+1; } |]
+      s = buildStateSpec d
+      d2 = pretty 120 $ ppr $ dropMainNonStatic s d
+  return $ not $ "s_top" `isInfixOf` d2

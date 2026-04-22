@@ -41,7 +41,6 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 
  - [ ] remove unused original variable declarations copied into dll.c
  - [ ] #line pragmas
- - [ ] https://github.com/aavogt/raylibd/blob/main/init/11-turing.c#L12 breaks if you rename sh_ to sh: hs/Transform/** doesn't know shadowing/scopes
  - [ ] nested arrays could reuse more space?
 
       struct state {

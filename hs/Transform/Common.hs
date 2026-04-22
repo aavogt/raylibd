@@ -59,7 +59,6 @@ data StateField = StateField
     fieldOrigName :: String,
     fieldName :: String,
     fieldInit :: Maybe Initializer,
-    fieldScope :: Maybe String,
     fieldArraySize :: [Const],
     fieldDecl :: Decl,
     fieldMoved :: Bool
@@ -68,7 +67,6 @@ data StateField = StateField
 
 data UseRewrite = UseRewrite
   { useName :: String,
-    useScope :: Maybe String,
     useExpr :: Exp
   }
   deriving (Show)
@@ -148,8 +146,8 @@ declArraySize (Array _ _ decl _) = declArraySize decl
 declArraySize (BlockPtr _ decl _) = declArraySize decl
 declArraySize _ = []
 
-fieldFromDecl :: DeclSpec -> Maybe String -> Init -> Maybe StateField
-fieldFromDecl specs scope (Init ident decl _ initVal _ _)
+fieldFromDecl :: DeclSpec -> Init -> Maybe StateField
+fieldFromDecl specs (Init ident decl _ initVal _ _)
   | declrHasntFun decl =
       let ty = declTypeSpec specs
           name = identName ident
@@ -160,12 +158,11 @@ fieldFromDecl specs scope (Init ident decl _ initVal _ _)
                 fieldOrigName = name,
                 fieldName = name,
                 fieldInit = initVal,
-                fieldScope = scope,
                 fieldArraySize = arraySize,
                 fieldDecl = decl,
                 fieldMoved = False
               }
-fieldFromDecl _ _ _ = Nothing
+fieldFromDecl _ _ = Nothing
 
 identName :: Id -> String
 identName (Id name _) = name

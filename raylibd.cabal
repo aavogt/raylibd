@@ -27,6 +27,7 @@ executable raylibd
       Init.Pick
       Init.PickAlign
       ParseTD
+      Rename
       Test
       Transform
       Transform.Assets
@@ -85,6 +86,7 @@ test-suite hspec
       Init.Pick
       Init.PickAlign
       ParseTD
+      Rename
       Test
       Transform
       Transform.Assets
