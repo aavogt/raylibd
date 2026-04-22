@@ -178,7 +178,9 @@ reinitAllocStmts (Just prevSpec) spec =
 
     reinitFieldToNew field =
       case lookupPrevField field of
-        Just prevField -> copyFieldToNew prevField field
+        Just prevField
+          | initEqual (fieldInit field) (fieldInit prevField) -> copyFieldToNew prevField field
+          | otherwise -> initTarget "t" field (fieldInit field)
         _ -> initTarget "t" field (fieldInit field)
 
 -- | reinitInPlaceStmts s is the body of ReinitInPlace(prevstate *s)
@@ -208,7 +210,12 @@ initTarget :: String -> StateField -> Maybe Initializer -> [Stm]
 initTarget _ _ Nothing = []
 initTarget target StateField {..} (Just initVal) =
   case mapM constToArrayLen fieldArraySize of
-    Just indexBounds -> [genLoopsST fieldName indexBounds]
+    Just indexBounds ->
+      let initExpr = initToExpr fieldType initVal
+          initLoop = genLoops indexBounds $ \vs ->
+            let lhs = indexExpr [cexp| $id:target->$id:fieldName |] vs
+             in [cstm| $exp:lhs = $initExpr; |]
+       in [initLoop]
     Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
 
 copyFieldToNew :: StateField -> StateField -> [Stm]
@@ -300,3 +307,27 @@ test2 = do
   let [BodiesPP { stepbody }] = getBodiesPP [[cunit| void main() { while(true) { int x = f(); x; } }  |]]
   putStrLn stepbody
   return (not ("s->x" `isInfixOf` stepbody) && "int x = f();" `isInfixOf` stepbody)
+
+test3 = do
+  let [b1 , b2] = getBodiesPP [[cunit| void main() {} |], [cunit| void main() { typename Vector2 x = (typename Vector2){2,3}; while(true) { x; } } |] ]
+  print ("b1", structbody b1)
+  print ("b2", structbody b2)
+  print ("b2o", prevstructbody b2)
+  putStrLn (reinitinplacebody b2)
+  putStrLn (reinitallocbody b2)
+
+test4 :: IO Bool
+test4 = do
+  let [_ , BodiesPP { .. } ] = getBodiesPP [
+        [cunit| void main() { int x = 1; while(true) { x; }} |],
+        [cunit| void main() { int x = 2; while(true) { x; } } |] ]
+  return ("x = 2" `isInfixOf` reinitinplacebody && "x = 2" `isInfixOf` reinitallocbody)
+
+test5 :: IO Bool
+test5 = do
+  let [_ , _ , BodiesPP { .. } ] = getBodiesPP [
+        [cunit| void main() { int x = 1; while(true) { x; }} |],
+        [cunit| void main() { int x = 2; while(true) { x; } } |] ,
+        [cunit| void main() { int x = 2; while(true) { x; } } |] ]
+  putStrLn reinitallocbody
+  return (not $ "x = 2" `isInfixOf` reinitinplacebody || "x = 2" `isInfixOf` reinitallocbody)
