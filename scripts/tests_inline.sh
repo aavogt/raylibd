@@ -71,6 +71,7 @@ while IFS= read -r file; do
     fns+=$mod
     # TODO find the longest $mod.$fname and use that instead of 30
     # haskell printf keeps the extra chars so it's only aesthetic
+    # TODO ghcid --reload dependency tracking
     qualtest+=("$(cat <<EOF
       do { \
 let { mf = "$mod.$fname" }; \
