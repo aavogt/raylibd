@@ -79,7 +79,7 @@ eb <- Control.Exception.try (Control.Exception.evaluate =<< $mod.$fname) :: IO (
 let { b = Data.Either.fromRight False eb }; \
 Control.Monad.when (Data.Either.isLeft eb) (print b); \
 bar (if b then 32 else 31) '^' mf; \
-return $ if b then Left mf else Right $ "ghcid $file $paths_raylibd -T" ++ mf }
+return $ if b then Left mf else Right $ "raylibd_datadir=. ghcid $file $paths_raylibd -T" ++ mf }
 EOF
 )")
   done
