@@ -1,13 +1,10 @@
-{-# LANGUAGE TypeApplications #-}
-
-module Test where
+module Test (runWithStdin) where
 
 import Control.Concurrent
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
 import Data.List
-import GHC.IO.Exception
 import GHC.IO.Handle
 import System.IO
 import System.IO.Error

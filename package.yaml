@@ -42,6 +42,10 @@ default-extensions:
   - TupleSections
   - ViewPatterns
   - ScopedTypeVariables
+  - ImplicitParams
+  - StandaloneDeriving
+  - TypeApplications
+  - FlexibleContexts
 
 executable:
   main: main.hs

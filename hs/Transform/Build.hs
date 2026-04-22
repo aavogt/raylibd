@@ -1,7 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Transform.Build
   ( buildStateSpec,
     collectGlobalVars,

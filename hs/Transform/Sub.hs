@@ -1,7 +1,3 @@
-{-# LANGUAGE ImplicitParams #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE UndecidableInstances #-}
-
 module Transform.Sub where
 
 import Control.Lens hiding (Const)
@@ -18,12 +14,10 @@ import Language.C.Quote.C
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class
 import Text.Show.Pretty (pPrint)
-import Transform.Build
-import Transform.Common
-import Debug.Trace
-
 import Transform.Assets
 import Transform.Assets.Macro
+import Transform.Build
+import Transform.Common
 import Transform.MergeSF
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
@@ -50,7 +44,7 @@ substituteTemplate (rewriteAssetLoads -> from) spec Prev {..} =
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
 
-renderDecls :: Pretty a => [a] -> String
+renderDecls :: (Pretty a) => [a] -> String
 renderDecls xs = concatMap ((++ ";\n") . pretty 120 . ppr) xs
 
 toDecl :: Definition -> Maybe Definition
