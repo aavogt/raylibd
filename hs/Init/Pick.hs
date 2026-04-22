@@ -21,6 +21,8 @@ import System.IO
 import Test (runWithStdin)
 import Text.Read
 import System.Timeout
+import Data.Maybe
+import Data.Tuple
 
 newtype Picked = Picked [(String, String)] deriving (Typeable, Generic, Show)
 
@@ -32,11 +34,16 @@ instance NFData Picked
 instance Exception Picked
 
 testPicker = do
-  print =<< runWithStdin "basic\ESC[A\n" picker
-  print =<< runWithStdin "basic\ESC[5~\n" picker
-  print =<< runWithStdin "basic\ESC[5~\ESC[B\n" picker
-  print =<< runWithStdin "bas\DEL\DEL\DELtur\n" picker
-  print =<< runWithStdin "basicin\n" picker
+  let origMaincHasInfix q (Just (Picked srcDest)) =
+          q `isInfixOf` fromJust (lookup "main.c" (map swap srcDest))
+      input `picks` q = do
+            True <- runWithStdin input picker <&> origMaincHasInfix q
+            return ()
+  "basic\ESC[A\n" `picks` "ball-spring"
+  "basic\ESC[5~\n" `picks` "minimal"
+  "basic\ESC[5~\ESC[B\n" `picks` "turing"
+  "bas\DEL\DEL\DELtur\n" `picks` "turing"
+  "basicin\n" `picks` "basicshader"
   return True
 
 picker :: IO (Maybe Picked)
