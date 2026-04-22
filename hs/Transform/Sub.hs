@@ -50,6 +50,8 @@ substituteTemplate (rewriteAssetLoads -> from) spec Prev {..} =
           x -> x
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
 
+renderDecls :: Pretty a => [a] -> String
+renderDecls xs = concatMap ((++ ";\n") . pretty 120 . ppr) xs
 
 toDecl :: Definition -> Maybe Definition
 toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. funcDs) [] [Init (f ^. funcId) proto Nothing Nothing [] noLoc] noLoc) noLoc
@@ -251,3 +253,13 @@ cinitEQ _ _ = False
 
 keepInit :: String -> Bool
 keepInit _ = True
+
+test1 = do
+  let m = [cunit| void f() { typename FILE *w1; FILE *w2; } void main() { typename FILE *x; static int z = 0; } |]
+  pPrint m
+  let ok s = all (`notElem` s) "w" && all (`elem` s) "xz"
+  let s = renderDecls $ buildStateMembers $ fields $ buildStateSpec m
+  putStrLn s
+  print $ ok s
+  putStrLn "but missing typename on output"
+  return False

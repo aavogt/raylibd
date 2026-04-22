@@ -23,6 +23,8 @@ import Language.C hiding (mkIdent)
 import Language.C.Quote.C
 import Transform.Common
 import Transform.Assets (rewriteAssetLoads)
+import Text.PrettyPrint.Mainland
+import Text.PrettyPrint.Mainland.Class
 
 -- Collect globals + static locals and build derived rewrite info.
 buildStateSpec :: [Definition] -> StateSpec
@@ -120,3 +122,16 @@ dropMainNonStatic spec = applyRewrites (useRewrite spec (mkIdent "s_top")) . fil
 
     notInit (DecDef (InitGroup specs _ inits _) _) = not (isNonConstSpec specs) || isStaticSpec specs
     notInit _ = True
+
+test1 = do
+  let d = [cunit|
+          const int c = 1;
+          int v = 2;
+          static int z = 3;
+          void main() {}
+          void nmain() {}
+          static const int sci = 4;  |]
+      s = buildStateSpec d
+  let d2 = pretty 120 $ ppr $ dropMainNonStatic s d
+  putStrLn d2
+  return(5 == length (lines d2))

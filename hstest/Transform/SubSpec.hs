@@ -30,9 +30,6 @@ goldText s v = do
 goldSF :: String -> [StateField] -> Spec
 goldSF s v = goldText s (renderDecls $ buildStateMembers $ uniqueDummy v)
 
-renderDecls :: Pretty a => [a] -> String
-renderDecls xs = concatMap ((++ ";\n") . pretty 120 . ppr) xs
-
 sanitize = mapMaybe \case
   '[' -> Just '_'
   ']' -> Just '_'
@@ -134,11 +131,3 @@ spec = do
         r = reinitInPlaceStmts (Just sa) sb{ fields = fb }
     g "x=1 changed to x=2" sa sb{ fields = fb }
 
-test1 = do
-  let m = [cunit| void f() { typename FILE *w1; FILE *w2; } void main() { typename FILE *x; static int z = 0; } |]
-  pPrint m
-  let ok s = all (`notElem` s) "w" && all (`elem` s) "xz"
-  let s = renderDecls $ buildStateMembers $ fields $ buildStateSpec m
-  putStrLn s
-  print $ ok s
-  putStrLn "but missing typename on output"

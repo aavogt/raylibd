@@ -12,13 +12,3 @@ spec = return ()
 
 
 -- dropMainNonStatic :: StateSpec -> [Definition] -> [Definition]
-test1 = do
-  let d = [cunit|
-          const int c = 1;
-          int v = 2;
-          static int z = 3;
-          void main() {}
-          void nmain() {}
-          static const int sci = 4;  |]
-      s = buildStateSpec d
-  putStrLn $ pretty 120 $  ppr $ dropMainNonStatic s d
