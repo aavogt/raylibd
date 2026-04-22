@@ -71,12 +71,17 @@ while IFS= read -r file; do
     fns+=$mod
     # TODO find the longest $mod.$fname and use that instead of 30
     # haskell printf keeps the extra chars so it's only aesthetic
-    qualtest+=("do \
-    let { bar n c = Text.Printf.printf \"\ESC[%dm%s %-30s %s\ESC[0m\n\" n (replicate 12 c) \"$mod.$fname\" (replicate 12 c) } ; \
-          bar 33 'v' ; \
-          b <- $mod.$fname ; \
-          bar (if b then 32 else 31) '^'; \
-          return $ if b then Left \"$mod.$fname\" else Right \"ghcid $file $paths_raylibd -T$mod.$fname\"")
+    qualtest+=("$(cat <<EOF
+      do { \
+let { mf = "$mod.$fname" }; \
+bar 33 'v' mf; \
+eb <- Control.Exception.try (Control.Exception.evaluate =<< $mod.$fname) :: IO (Either Control.Exception.SomeException Bool); \
+let { b = Data.Either.fromRight False eb }; \
+Control.Monad.when (Data.Either.isLeft eb) (print b); \
+bar (if b then 32 else 31) '^' mf; \
+return $ if b then Left mf else Right $ "ghcid $file $paths_raylibd -T" ++ mf }
+EOF
+)")
   done
 done < <(find hs/ -name "*.hs" | sort)
 
@@ -85,49 +90,63 @@ for mod in "${modules[@]}"; do
   star_modules+=("*$mod")
 done
 
-ghci -v0 ${files[@]} -i$(dirname "$paths_raylibd") -ihs <<< ':set prompt ""
-  :set prompt-cont ""
-  :module +'${star_modules[@]}'
-  (ok,notok) <- Data.Either.partitionEithers <$> sequence [ '$(IFS=,; echo "${qualtest[*]}")' ]
-  :{
-  data Trie = Trie Bool [(String, Trie)]
+ghci_script="$(mktemp)"
+cleanup() {
+  local status=$?
+  rm -f "$ghci_script"
+  pkill -P $$ >/dev/null 2>&1 || true
+  return $status
+}
+trap cleanup EXIT INT TERM
+cat >"$ghci_script" <<GHCISCRIPT
+:set prompt ""
+:set prompt-cont ""
+:load ${files[@]}
+:module +${star_modules[@]}
+let bar n c name = Text.Printf.printf "\ESC[%dm%s %-30s %s\ESC[0m\n" n (replicate 12 c) name (replicate 12 c)
+(ok,notok) <- Data.Either.partitionEithers <$> sequence [ $(IFS=","; echo "${qualtest[*]}") ]
+:{
+data Trie = Trie Bool [(String, Trie)]
 
-  splitDot :: String -> [String]
-  splitDot s = case break (== '\''.'\'') s of
-    (a, '\''.'\'':rest) -> a : splitDot rest
-    (a, _) -> [a]
+splitDot :: String -> [String]
+splitDot s = case break (== '.') s of
+  (a, '.':rest) -> a : splitDot rest
+  (a, _) -> [a]
 
-  emptyTrie :: Trie
-  emptyTrie = Trie False []
+emptyTrie :: Trie
+emptyTrie = Trie False []
 
-  insertPath :: [String] -> Trie -> Trie
-  insertPath [] (Trie _ ch) = Trie True ch
-  insertPath (p:ps) (Trie term ch) = Trie term (go ch)
-    where
-      go [] = [(p, insertPath ps emptyTrie)]
-      go ((k, t):rest)
-        | k == p = (k, insertPath ps t) : rest
-        | otherwise = (k, t) : go rest
+insertPath :: [String] -> Trie -> Trie
+insertPath [] (Trie _ ch) = Trie True ch
+insertPath (p:ps) (Trie term ch) = Trie term (go ch)
+  where
+    go [] = [(p, insertPath ps emptyTrie)]
+    go ((k, t):rest)
+      | k == p = (k, insertPath ps t) : rest
+      | otherwise = (k, t) : go rest
 
-  buildTrie :: [String] -> Trie
-  buildTrie = foldr insertPath emptyTrie . map splitDot
+buildTrie :: [String] -> Trie
+buildTrie = foldr insertPath emptyTrie . map splitDot
 
-  renderTrie :: Trie -> [String]
-  renderTrie (Trie term ch) =
-    let renderChild (k, t) =
-          let subs = renderTrie t
-              nonEmpty = filter (/= "") subs
-              hasEmpty = any (== "") subs
-              withSubs = case nonEmpty of
-                [] -> []
-                [s] -> [k ++ "." ++ s]
-                _ -> [k ++ ".{" ++ Data.List.intercalate "," nonEmpty ++ "}"]
-          in (if hasEmpty then [k] else []) ++ withSubs
-    in (if term then [""] else []) ++ concatMap renderChild ch
+renderTrie :: Trie -> [String]
+renderTrie (Trie term ch) =
+  let renderChild (k, t) =
+        let subs = renderTrie t
+            nonEmpty = filter (/= "") subs
+            hasEmpty = any (== "") subs
+            withSubs = case nonEmpty of
+              [] -> []
+              [s] -> [k ++ "." ++ s]
+              _ -> [k ++ ".{" ++ Data.List.intercalate "," nonEmpty ++ "}"]
+        in (if hasEmpty then [k] else []) ++ withSubs
+  in (if term then [""] else []) ++ concatMap renderChild ch
 
-  bashBrace :: [String] -> [String]
-  bashBrace xs = filter (/= "") (renderTrie (buildTrie (Data.List.sort xs)))
-  :}
-  Control.Monad.unless (null ok) (putStrLn ("successes: " ++ unwords (bashBrace ok)))
-  Control.Monad.unless (null notok) (putStrLn "rerun failures with:")
-  mapM_ putStrLn notok'
+bashBrace :: [String] -> [String]
+bashBrace xs = filter (/= "") (renderTrie (buildTrie (Data.List.sort xs)))
+:}
+Control.Monad.unless (null ok) (putStrLn ("successes: " ++ unwords (bashBrace ok)))
+Control.Monad.unless (null notok) (putStrLn "rerun failures with:")
+mapM_ putStrLn notok
+GHCISCRIPT
+
+ghci -v0 -i$(dirname "$paths_raylibd") -i"$srcdir" -ghci-script "$ghci_script" </dev/null
