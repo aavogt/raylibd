@@ -83,21 +83,12 @@ spec = do
         c = [cunit| float xs[4]; char n; |]
         d = [cunit| float xs[3]; char n; |]
         e = [cunit| float xs[2]; char n; |]
-        sa = buildStateSpec a
-        sb = buildStateSpec b
-        sc = buildStateSpec c
-        sd = buildStateSpec d
-        se = buildStateSpec e
-        fa = fields sa
-        fb = mergeSF (fields sa) (fields sb)
-        fc = fb `mergeSF` fields sc
-        fd = fc `mergeSF` fields sd
-        fe = fd `mergeSF` fields se
-    goldSF "state_a" fa
-    goldSF "state_b" fb
-    goldSF "state_c" fc
-    goldSF "state_d" fd
-    goldSF "state_e" fe
+        [fa,fb, fc, fd, fe] = map structbody $ getBodiesPP [a,b,c,d, e]
+    goldText "state_a" fa
+    goldText "state_b" fb
+    goldText "state_c" fc
+    goldText "state_d" fd
+    goldText "state_e" fe
 
   let g s x y = gold s $ Block (map BlockStm (reinitAllocStmts (Just x) y)) noLoc
   describe "reinit" do

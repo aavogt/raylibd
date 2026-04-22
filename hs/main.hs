@@ -117,8 +117,7 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
           Left e -> hPrint stderr result
           _ -> return ()
 
-        let spec = buildStateSpec from
-        sub <- atomicModifyIORef' prev (substituteTemplate from spec)
+        sub <- atomicModifyIORef' prev (substituteTemplate from)
         subbed <- sub . (includes_prop ++) <$> readFile templatec
         writeFile outputmain subbed
         when echo $ putStrLn subbed

@@ -23,26 +23,63 @@ import Rename (rename)
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
-substituteTemplate :: [Definition] -> StateSpec -> Prev -> (Prev, String -> String)
-substituteTemplate (rewriteAssetLoads . rename -> from) spec Prev {..} =
-  let render x = pretty 120 $ ppr x
+data BodiesPP = BodiesPP {
+      decls,
+      defs,
+      structbody,
+      prevstructbody,
+      reinitallocbody,
+      reinitinplacebody,
+      initbody,
+      stepbody,
+      uninitbody,
+      assetwrappers,
+      assetreloadswitchkind :: String }
+
+-- replace template strings
+bodiesPP :: BodiesPP -> String -> String
+bodiesPP BodiesPP{..} = lined %~ \case
+          "//DECLS" -> decls
+          "//DEFS" -> defs
+          "//STRUCTBODY" -> structbody
+          "//PREVSTRUCTBODY" -> prevstructbody
+          "//REINITALLOCBODY" -> reinitallocbody
+          "//REINITINPLACEBODY" -> reinitinplacebody
+          "//INITBODY" -> initbody
+          "//STEPBODY" -> stepbody
+          "//UNINITBODY" -> uninitbody
+          "//ASSETWRAPPERS" -> assetwrappers
+          "//ASSETRELOADSWITCHKIND" -> assetreloadswitchkind
+          x -> x
+
+-- | @a = [cunit| |] :: [Definition]
+--  [ba, bb] = getBodiesPP [ a, b]@
+--  ba is the first dll.c, bb the second etc.
+getBodiesPP :: [[Definition]] -> [BodiesPP]
+getBodiesPP defss = drop 1 $ map snd $ scanl (\ (p, _) b -> substituteTemplate0 b p) (Prev Nothing [], undefined) defss
+
+substituteTemplate :: [Definition] -> Prev -> (Prev, String -> String)
+substituteTemplate (rewriteAssetLoads . rename -> defs) prev = substituteTemplate0 defs prev & _2 %~ bodiesPP
+
+substituteTemplate0 :: [Definition] -> Prev -> (Prev, BodiesPP)
+substituteTemplate0 (rewriteAssetLoads . rename -> from) Prev {..} =
+  let spec = buildStateSpec from
+      render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
       renderDecls xs = concatMap ((++ ";\n") . render) xs
       mergedSF = mergeSF prevSF (fields spec)
-      withTemplate =
-        lined %~ \case
-          "//DECLS" -> render (mapMaybe toDecl from)
-          "//DEFS" -> render (dropMainNonStatic spec from)
-          "//STRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy mergedSF
-          "//PREVSTRUCTBODY" -> renderDecls $ buildStateMembers $ uniqueDummy prevSF
-          "//REINITALLOCBODY" -> render reinitAllocBody
-          "//REINITINPLACEBODY" -> render reinitInPlaceBody
-          "//INITBODY" -> render initBody
-          "//STEPBODY" -> render stepBody
-          "//UNINITBODY" -> render uninitBody
-          "//ASSETWRAPPERS" -> assetWrappersC
-          "//ASSETRELOADSWITCHKIND" -> assetReloadSwitchKind
-          x -> x
+      withTemplate = BodiesPP
+          (render (mapMaybe toDecl from))
+          (render (dropMainNonStatic spec from))
+          (renderDecls $ buildStateMembers $ uniqueDummy mergedSF)
+          (renderDecls $ buildStateMembers $ uniqueDummy prevSF)
+          (render reinitAllocBody)
+          (render reinitInPlaceBody)
+          (render initBody)
+          (render stepBody)
+          (render uninitBody)
+          assetWrappersC
+          assetReloadSwitchKind
    in (Prev {prevSpec = Just spec, prevSF = mergedSF}, withTemplate)
 
 renderDecls :: (Pretty a) => [a] -> String
@@ -258,3 +295,8 @@ test1 = do
   print $ ok s
   putStrLn "but missing typename on output"
   return False
+
+test2 = do
+  let [BodiesPP { stepbody }] = getBodiesPP [[cunit| void main() { while(true) { int x = f(); x; } }  |]]
+  putStrLn stepbody
+  return (not ("s->x" `isInfixOf` stepbody) && "int x = f();" `isInfixOf` stepbody)
