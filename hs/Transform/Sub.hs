@@ -211,11 +211,19 @@ initTarget _ _ Nothing = []
 initTarget target StateField {..} (Just initVal) =
   case mapM constToArrayLen fieldArraySize of
     Just indexBounds ->
-      let initExpr = initToExpr fieldType initVal
-          initLoop = genLoops indexBounds $ \vs ->
-            let lhs = indexExpr [cexp| $id:target->$id:fieldName |] vs
-             in [cstm| $exp:lhs = $initExpr; |]
-       in [initLoop]
+      case (indexBounds, initVal) of
+        ([len], CompoundInitializer _ _) ->
+          [ let lhs = mkMemberIndexFrom target fieldName idx
+                rhs = initExprAt idx initVal
+             in [cstm| $exp:lhs = $exp:rhs; |]
+            | idx <- [0 .. len - 1]
+          ]
+        _ ->
+          let initExpr = initToExpr fieldType initVal
+              initLoop = genLoops indexBounds $ \vs ->
+                let lhs = indexExpr [cexp| $id:target->$id:fieldName |] vs
+                 in [cstm| $exp:lhs = $initExpr; |]
+           in [initLoop]
     Nothing -> [[cstm| $id:target->$id:fieldName = $(initToExpr fieldType initVal); |]]
 
 copyFieldToNew :: StateField -> StateField -> [Stm]
@@ -331,3 +339,13 @@ test5 = do
         [cunit| void main() { int x = 2; while(true) { x; } } |] ]
   putStrLn reinitallocbody
   return (not $ "x = 2" `isInfixOf` reinitinplacebody || "x = 2" `isInfixOf` reinitallocbody)
+
+test6 :: IO Bool
+test6 = do
+    let inp = [cunit| int x[3] = {1, 2, 3}; void main() { } |]
+    print inp
+    let [BodiesPP {..}] = getBodiesPP [
+            inp ]
+    putStrLn initbody
+
+    return $ not $ "1, 2, 3" `isInfixOf` initbody

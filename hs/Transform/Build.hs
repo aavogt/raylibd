@@ -93,14 +93,23 @@ toStateFields fields0 =
 
 toInitStmts :: [StateField] -> [Stm]
 toInitStmts sfs =
-  [ case mlengths of
-      Just lengths -> genLoops lengths \vs ->
-        let lhs = indexExpr [cexp| s->$id:fieldName |] vs
-         in [cstm| $lhs = $initExpr; |]
-      _ -> [cstm| s->$id:fieldName = $initExpr; |]
+  concat
+    [ case (mlengths, initVal) of
+        (Just [len], CompoundInitializer _ _) ->
+          [ let lhs = mkMemberIndexFrom "s" fieldName idx
+                rhs = initExprAt idx initVal
+             in [cstm| $exp:lhs = $exp:rhs; |]
+            | idx <- [0 .. len - 1]
+          ]
+        (Just lengths, _) ->
+          [ genLoops lengths \vs ->
+              let lhs = indexExpr [cexp| s->$id:fieldName |] vs
+               in [cstm| $lhs = $initExpr; |]
+          ]
+        _ -> [[cstm| s->$id:fieldName = $initExpr; |]]
     | field@StateField {fieldInit = Just initVal, fieldArraySize = mapM constToArrayLen -> mlengths, ..} <- sfs,
       let initExpr = initToExpr fieldType initVal
-  ]
+    ]
 
 toUseRewrite :: [StateField] -> Id -> [UseRewrite]
 toUseRewrite fs s =
