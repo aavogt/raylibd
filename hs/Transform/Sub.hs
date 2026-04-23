@@ -58,11 +58,23 @@ bodiesPP BodiesPP{..} = lined %~ \case
 getBodiesPP :: [[Definition]] -> [BodiesPP]
 getBodiesPP defss = drop 1 $ map snd $ scanl (\ (p, _) b -> substituteTemplate0 b p) (Prev Nothing [], undefined) defss
 
+getBodiesPP1 :: [Definition] -> BodiesPP
+getBodiesPP1 unit = snd $ substituteTemplate0 unit (Prev Nothing [])
+
+ensureMain :: [Definition] -> [Definition]
+ensureMain defs | any isMainFunc defs = defs | otherwise = defs ++ dummyMain
+
+isMainFunc :: Definition -> Bool
+isMainFunc (FuncDef (Fun "main" items) _) = True
+isMainFunc _ = False
+
+dummyMain = [cunit| void main() {} |]
+
 substituteTemplate :: [Definition] -> Prev -> (Prev, String -> String)
-substituteTemplate (rewriteAssetLoads . rename -> defs) prev = substituteTemplate0 defs prev & _2 %~ bodiesPP
+substituteTemplate defs prev = substituteTemplate0 defs prev & _2 %~ bodiesPP
 
 substituteTemplate0 :: [Definition] -> Prev -> (Prev, BodiesPP)
-substituteTemplate0 (rewriteAssetLoads . rename -> from) Prev {..} =
+substituteTemplate0 (rewriteAssetLoads . rename . ensureMain -> from) Prev {..} =
   let spec = buildStateSpec from
       render x = pretty 120 $ ppr x
       Just (Bodies {..}) = getBodies spec prevSpec from
@@ -344,8 +356,6 @@ test6 :: IO Bool
 test6 = do
     let inp = [cunit| int x[3] = {1, 2, 3}; void main() { } |]
     print inp
-    let [BodiesPP {..}] = getBodiesPP [
-            inp ]
+    let BodiesPP {..} = getBodiesPP1 inp
     putStrLn initbody
-
     return $ not $ "1, 2, 3" `isInfixOf` initbody
