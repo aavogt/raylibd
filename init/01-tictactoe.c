@@ -8,19 +8,104 @@
 #endif
 #include <stdbool.h>
 
-int board[3][3], h, w;
-const int frame = 20;
-int score[3] = {0, 0, 0};
-
+// 1=x 2=o, 0 empty or draw
+int board[3][3], score[3];
 bool xturn = true;
 
-static void reset_board(void) {
+// visual
+int h, w, bh, bw;
+const int b = 20;
+
+// defined below main
+void reset_board();
+int check_winner();
+bool any_cells_open();
+void drawcell(int, int, const char *, Color);
+
+int main() {
+  SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+  InitWindow(800, 600, "main.c");
+  SetTargetFPS(144);
+  while (!WindowShouldClose()) {
+    h = GetScreenHeight();
+    w = GetScreenWidth();
+    bh = h - 2 * b;
+    bw = w - 2 * b;
+    BeginDrawing();
+    ClearBackground(BLACK);
+    DrawLine(b + bw / 3, b, b + bw / 3, bh + b, RAYWHITE);
+    DrawLine(b + 2 * bw / 3, b, b + 2 * bw / 3, bh + b, RAYWHITE);
+    DrawLine(b, b + bh / 3, bw + b, b + bh / 3, RAYWHITE);
+    DrawLine(b, b + 2 * bh / 3, bw + b, b + 2 * bh / 3, RAYWHITE);
+
+    if (IsKeyPressed(KEY_SPACE))
+      reset_board();
+
+    switch (check_winner()) {
+    case 2:
+      score[2] += 1;
+      reset_board();
+      break;
+    case 1:
+      score[1] += 1;
+      reset_board();
+      break;
+    default:
+      if (!any_cells_open()) {
+        score[0] += 1;
+        reset_board();
+      }
+    }
+
+    Vector2 p = GetMousePosition();
+    int i = (p.x - b) / (bw / 3);
+    int j = (p.y - b) / (bh / 3);
+    bool onBoard = p.x >= b && p.x < b + bw && p.y >= b && p.y < b + bh &&
+                   i >= 0 && i < 3 && j >= 0 && j < 3;
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && onBoard)
+      board[i][j] = 0;
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && onBoard) {
+      board[i][j] = 1 + xturn;
+      xturn = !xturn;
+    }
+
+    if (onBoard && board[i][j] == 0)
+      drawcell(i, j, xturn ? "x" : "o", xturn ? DARKPURPLE : DARKBLUE);
+
+    for (int i = 0; i < 3; i++)
+      for (int j = 0; j < 3; j++) {
+        if (board[i][j] > 0) {
+          const char *mark = board[i][j] > 1 ? "x" : "o";
+          drawcell(i, j, mark, board[i][j] > 1 ? PURPLE : BLUE);
+        }
+      }
+
+    char scorestr[30];
+    Color xColor = xturn ? RAYWHITE : DARKGRAY;
+    Color oColor = xturn ? DARKGRAY : RAYWHITE;
+
+    snprintf(scorestr, sizeof(scorestr), "X - %d", score[2]);
+    DrawText(scorestr, 10, 10, 20, xColor);
+
+    snprintf(scorestr, sizeof(scorestr), "O - %d", score[1]);
+    DrawText(scorestr, 10, 34, 20, oColor);
+
+    snprintf(scorestr, sizeof(scorestr), "Draws - %d", score[0]);
+    DrawText(scorestr, 10, 58, 20, DARKGRAY);
+    EndDrawing();
+  }
+  CloseWindow();
+}
+
+void reset_board() {
   for (int i = 0; i < 3; i++)
     for (int j = 0; j < 3; j++)
       board[i][j] = 0;
 }
 
-static int check_winner(void) {
+int check_winner() {
   for (int i = 0; i < 3; i++) {
     if (board[i][0] != 0 && board[i][0] == board[i][1] &&
         board[i][1] == board[i][2])
@@ -40,107 +125,22 @@ static int check_winner(void) {
   return 0;
 }
 
-// could be a bit more eager
-static bool is_draw(void) {
+bool any_cells_open() {
   for (int i = 0; i < 3; i++)
     for (int j = 0; j < 3; j++)
       if (board[i][j] == 0)
-        return false;
-  return check_winner() == 0;
+        return true;
+  return false;
 }
 
-static void drawcell(int i, int j, const char *mark, Color color) {
-  int bw = w - 2 * frame;
-  int bh = h - 2 * frame;
+void drawcell(int i, int j, const char *mark, Color color) {
   int cellW = bw / 3;
   int cellH = bh / 3;
-  int fontSize = (int)(1.5f * cellH);
+  int fontSize = 1.5f * cellH;
   int textW = MeasureText(mark, fontSize);
 
-  int x = frame + i * cellW + (cellW - textW) / 2;
-  int y = frame + j * cellH + (cellH - fontSize) / 2;
+  int x = b + i * cellW + (cellW - textW) / 2;
+  int y = b + j * cellH + (cellH - fontSize) / 2;
 
   DrawText(mark, x, y, fontSize, color);
-}
-
-int main() {
-  SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
-  InitWindow(800, 600, "main.c");
-  SetTargetFPS(144);
-  while (!WindowShouldClose()) {
-    h = GetScreenHeight();
-    w = GetScreenWidth();
-    int bh = h - 2 * frame;
-    int bw = w - 2 * frame;
-    BeginDrawing();
-    ClearBackground(BLACK);
-    DrawLine(frame + bw / 3, frame, frame + bw / 3, bh + frame, RAYWHITE);
-    DrawLine(frame + 2 * bw / 3, frame, frame + 2 * bw / 3, bh + frame,
-             RAYWHITE);
-    DrawLine(frame, frame + bh / 3, bw + frame, frame + bh / 3, RAYWHITE);
-    DrawLine(frame, frame + 2 * bh / 3, bw + frame, frame + 2 * bh / 3,
-             RAYWHITE);
-
-    if (IsKeyPressed(KEY_SPACE)) {
-      reset_board();
-    }
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
-      Vector2 p = GetMousePosition();
-      int i = (p.x - frame) / (w / 3);
-      int j = (p.y - frame) / (h / 3);
-      board[i][j] = 0;
-    }
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-      Vector2 p = GetMousePosition();
-      int i = (p.x - frame) / (w / 3);
-      int j = (p.y - frame) / (h / 3);
-      board[i][j] = 1 + xturn;
-      xturn = !xturn;
-    }
-
-    int winner = check_winner();
-    if (winner != 0) {
-      if (winner == 2)
-        score[0] += 1;
-      else
-        score[1] += 1;
-      reset_board();
-    } else if (is_draw()) {
-      score[2] += 1;
-      reset_board();
-    }
-
-    Vector2 hover = GetMousePosition();
-    int hoverI = (hover.x - frame) / (bw / 3);
-    int hoverJ = (hover.y - frame) / (bh / 3);
-    bool hoverInBounds = hover.x >= frame && hover.x < frame + bw &&
-                         hover.y >= frame && hover.y < frame + bh &&
-                         hoverI >= 0 && hoverI < 3 && hoverJ >= 0 && hoverJ < 3;
-
-    for (int i = 0; i < 3; i++)
-      for (int j = 0; j < 3; j++) {
-        if (board[i][j] > 0) {
-          const char *mark = board[i][j] > 1 ? "x" : "o";
-          drawcell(i, j, mark, board[i][j] > 1 ? PURPLE : BLUE);
-        } else if (hoverInBounds && i == hoverI && j == hoverJ) {
-          const char *mark = xturn ? "x" : "o";
-          drawcell(i, j, mark, xturn ? DARKPURPLE : DARKBLUE);
-        }
-      }
-
-    char scorestr[30];
-    Color xColor = xturn ? RAYWHITE : DARKGRAY;
-    Color oColor = xturn ? DARKGRAY : RAYWHITE;
-
-    snprintf(scorestr, sizeof(scorestr), "X - %d", score[0]);
-    DrawText(scorestr, 10, 10, 20, xColor);
-
-    snprintf(scorestr, sizeof(scorestr), "O - %d", score[1]);
-    DrawText(scorestr, 10, 34, 20, oColor);
-
-    snprintf(scorestr, sizeof(scorestr), "Draws - %d", score[2]);
-    DrawText(scorestr, 10, 58, 20, DARKGRAY);
-    EndDrawing();
-  }
-  CloseWindow();
 }
