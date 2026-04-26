@@ -58,7 +58,7 @@ initmode =
     &= help "create a new project in ITEM/"
 
 main = do
-  watch =<< cmdArgs (modes [watchmode &= auto, initmode])
+  watch =<< cmdArgs (modes [watchmode &= auto, initmode] &= verbosity)
 
 watch Init {..} = do
   when list do
