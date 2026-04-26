@@ -25,7 +25,7 @@ import GuessTD (guessTypeDefs)
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
-  | Init { dest :: Maybe FilePath, force :: Bool, list :: Bool, index :: Maybe Int, rest :: [String]}
+  | Init { force :: Bool, list :: Bool, index :: Maybe Int, rest :: [String]}
   deriving (Data)
 
 watchmode =
@@ -48,14 +48,12 @@ watchmode =
 
 initmode =
   Init
-    { 
-      dest = Nothing,
-      list = False &= help "list main.c templates and exit",
+    { list = False &= help "list main.c templates and exit",
       index = Nothing &= help "pick main.c template by leading number ie. --index=0 for 00-minimal.c",
       force = False &= help "overwrite files",
       rest = [] &= args
     }
-    &= help "create a new project in ITEM/"
+    &= help "interactively create a new project in ITEM/"
 
 main = do
   watch =<< cmdArgs (modes [watchmode &= auto, initmode] &= verbosity)
@@ -64,7 +62,7 @@ watch Init {..} = do
   when list do
     printList
     exitSuccess
-  dest <- case maybeToList dest ++ rest of
+  dest <- case rest of
     [] -> do
       putStrLn "enter the project directory:"
       getLine
