@@ -20,6 +20,7 @@ import Transform.Build
 import Transform.Common
 import Transform.MergeSF
 import Rename (rename)
+import AstLenses
 
 data Prev = Prev {prevSpec :: Maybe StateSpec, prevSF :: [StateField]}
 
@@ -103,30 +104,6 @@ toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. 
     proto = Proto (DeclRoot noLoc) (f ^. funcParams) noLoc
 toDecl td@(DecDef (TypedefGroup {}) _) = Just td
 toDecl _ = Nothing
-
-funcParams :: Lens' Func Params
-funcParams op (Func a b c d e f) = op d <&> \b' -> Func a b c d e f
-funcParams op (OldFunc a b c [] e f g) = op (Params [] False noLoc) <&> \(Params ps _ _) -> OldFunc a b c (getId ps) e f g
-
-getId :: [Param] -> [Id]
-getId = map (\(Param (Just a) _ _ _) -> a)
-
-funcName :: Lens' Func String
-funcName op (Func a (Id b c) d e f g) = op b <&> \b' -> Func a (Id b' c) d e f g
-funcName op (OldFunc a (Id b c) d e f g h) = op b <&> \b' -> OldFunc a (Id b' c) d e f g h
-
-funcDs :: Lens' Func DeclSpec
-funcDs op (Func a b c d e f) = op a <&> \a' -> Func a' b c d e f
-funcDs op (OldFunc a b c d e f g) = op a <&> \a' -> OldFunc a' b c d e f g
-
-funcId :: Lens' Func Id
-funcId op (Func a b c d e f) = op b <&> \b' -> Func a b' c d e f
-funcId op (OldFunc a b c d e f g) = op b <&> \b' -> OldFunc a b' c d e f g
-
--- could be Data.Data.Lens.template?
-funcBlockItems :: Lens' Func [BlockItem]
-funcBlockItems op (Func a b c d bs f) = op bs <&> \bs' -> Func a b c d bs' f
-funcBlockItems op (OldFunc a b c d e bs f) = op bs <&> \bs' -> OldFunc a b c d e bs' f
 
 --------------------------------------------------------------------------------
 -- Bodies helpers
@@ -335,6 +312,7 @@ test3 = do
   print ("b2o", prevstructbody b2)
   putStrLn (reinitinplacebody b2)
   putStrLn (reinitallocbody b2)
+  return True
 
 test4 :: IO Bool
 test4 = do
