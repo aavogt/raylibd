@@ -3,13 +3,14 @@ INCLUDES := -I/usr/local/include -I/usr/include -Ivendor/raylib/build/raylib -Iv
 CFLAGS   := -fPIC -O2 -Wl,--export-dynamic $(INCLUDES)
 RAYLIB_A := $(firstword $(wildcard /usr/local/lib/libraylib.a /usr/lib/libraylib.a) vendor/raylib/build/raylib/libraylib.a)
 RAYGUI_H := $(firstword $(wildcard /usr/local/include/raygui.h /usr/include/raygui.h) vendor/raygui.h)
+RAYLIBD := raylibd --quiet
 
 watch: main_hot dll.so
 	ulimit -v 1000000
 	set -m
 	trap 'pkill -P $$$$' EXIT
 	LD_LIBRARY_PATH=. ./main_hot &
-	raylibd &
+	$(RAYLIBD) &
 	ls dll.c | entr make dll.so
 
 main_hot: $(RAYLIB_A) main_hot.c dll.c
@@ -23,7 +24,7 @@ dll.so: dll.c
 	mv dll.so.2 $@
 
 dll.c: main.c
-	[ -e main.hs ] && ghcid --command 'cabal repl' -Tmain || raylibd --once
+	[ -e main.hs ] && ghcid --command 'cabal repl' -Tmain || $(RAYLIBD) --once
 
 compile_commands.json: $(RAYGUI_H)
 	bear -- $(CC) $(CFLAGS) main.c -fsyntax-only
