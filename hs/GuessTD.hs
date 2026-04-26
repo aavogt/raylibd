@@ -39,8 +39,9 @@ InitializerIdent. Initializer ::= Ident;
 InitializerNumber. Initializer ::= Number;
 InitializerTrue. Initializer ::= "true";
 InitializerFalse. Initializer ::= "false";
-Field. Field ::= Type Declarator ";";
+Field. Field ::= Type [Declarator] ";";
 
+separator Declarator ",";
 separator Param ",";
 Param. Param ::= Type Declarator;
 ParamOnly. Param ::= Type;
@@ -89,6 +90,11 @@ e1 = [str|
     } Seg;
 
     typedef struct {
+      Seg2 *y, *z;
+    } Segs2;
+    Entities entities;
+
+    typedef struct {
       Seg *entries;
       size_t count;
       size_t capacity;
@@ -107,7 +113,7 @@ test1 :: IO Bool
 test1 = do
   let (err, tds) = guessTypeDefs (C8.pack e1)
       eqset a b = null (a\\b) && null (b \\a)
-      success = tds `eqset` words "Vector2 bool Seg size_t Segs T2 T3 T4 X"
+      success = tds `eqset` words "Vector2 bool Seg size_t Segs Seg2 Segs2 T2 T3 T4 Entities X"
   unless (null err) $ print ("err", err)
   print tds
   return success
