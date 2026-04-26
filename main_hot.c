@@ -43,7 +43,7 @@ bool mtime_changed(const char *p) {
   } else {
     have_prev = true;
     prev = cur;
-    return true;
+    return false;
   }
 }
 

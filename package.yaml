@@ -19,6 +19,7 @@ dependencies:
     - unix
     - deepseq
     - array
+    - BNFC-meta
 
 
 data-files:

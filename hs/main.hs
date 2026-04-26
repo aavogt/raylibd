@@ -11,7 +11,6 @@ import Data.Loc
 import Data.Maybe
 import Init.Pick
 import Language.C hiding (Init)
-import ParseTD
 import Paths_raylibd
 import System.Console.CmdArgs
 import System.Directory
@@ -22,6 +21,7 @@ import System.IO
 import System.Process
 import Text.Show.Pretty hiding (getDataDir)
 import Transform
+import GuessTD (guessTypeDefs)
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
@@ -40,7 +40,7 @@ watchmode =
           \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
           \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList RenderTexture2D"
           &= help "override raylib typedef struct",
-      typedefs_extra = [] &= help "extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges",
+      typedefs_extra = [] &= help "hardcode extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges skipping auto detection by GuessTD.guessTypeDefs parser",
       echo = False &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
@@ -112,7 +112,7 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
   templatec <- getDataFileName "dll_template.c"
   let reloadMainC = do
         let allTypedefs = concatMap split (typedefs ++ typedefs_extra)
-        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) allTypedefs inputmain
+        result@(~(Right from)) <- parseCFileWithGcc "gcc" (cflags ++ cflags_extra) (null typedefs_extra) allTypedefs inputmain
         case result of
           Left e -> hPrint stderr result
           _ -> return ()
@@ -143,18 +143,19 @@ runPreprocessor gcc flags input = do
     ExitSuccess -> Right (C8.pack out)
     _ -> Left exit
 
-parseCFileWithGcc gcc flags typedefs input = do
+parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
   let args = "-E" : flags ++ [input]
   whenLoud $ putStrLn $ unwords $ ">" : gcc : args
   (exit, out, _err) <- readProcessWithExitCode gcc args ""
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  case parseAddingTD [] typedefs parseUnit (C8.pack contents) (Just (Pos input 1 1 0)) of
-    ([], r) -> return r
-    (inferredTypedefs, r) -> do
-      whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
-      return r
+  let (err, inferredTypedefs)
+          | inferTypedefs = guessTypeDefs (C8.pack contents)
+          | otherwise = ("", [])
+  unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
+  whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
+  return $ parse [] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
 
 notRemoved = \case
   Removed {} -> False

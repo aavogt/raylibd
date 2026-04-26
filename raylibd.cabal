@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.1.
 --
 -- see: https://github.com/sol/hpack
 
@@ -14,19 +14,22 @@ data-files:
     Makefile
     vendor/Makefile
     init/00-minimal.c
+    init/01-tictactoe.c
     init/10-basicshader.c
     init/10-tint.fs
     init/11-brush.fs
     init/11-step.fs
     init/11-turing.c
+    init/21-ball-paddle.c
     init/22-ball-spring-trail.c
 
 executable raylibd
   main-is: main.hs
   other-modules:
+      AstLenses
+      GuessTD
       Init.Pick
       Init.PickAlign
-      ParseTD
       Rename
       Test
       Transform
@@ -57,7 +60,8 @@ executable raylibd
       TypeApplications
       FlexibleContexts
   build-depends:
-      PyF
+      BNFC-meta
+    , PyF
     , ansi-terminal
     , array
     , base
@@ -83,9 +87,10 @@ test-suite hspec
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      AstLenses
+      GuessTD
       Init.Pick
       Init.PickAlign
-      ParseTD
       Rename
       Test
       Transform
@@ -121,7 +126,8 @@ test-suite hspec
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:
-      PyF
+      BNFC-meta
+    , PyF
     , ansi-terminal
     , array
     , base
