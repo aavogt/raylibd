@@ -101,7 +101,7 @@ renderDecls xs = concatMap ((++ ";\n") . pretty 120 . ppr) xs
 toDecl :: Definition -> Maybe Definition
 toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. funcDs) [] [Init (f ^. funcId) proto Nothing Nothing [] noLoc] noLoc) noLoc
   where
-    proto = Proto (DeclRoot noLoc) (f ^. funcParams) noLoc
+    proto = Proto (f ^. funcPtr) (f ^. funcParams) noLoc
 toDecl td@(DecDef (TypedefGroup {}) _) = Just td
 toDecl _ = Nothing
 
@@ -341,3 +341,10 @@ test7 = do
           [cunit| int y = 2; int x = f(2); |] ]
   putStrLn reinitinplacebody
   return ('x' `elem` reinitinplacebody)
+
+test8 :: IO Bool
+test8 = do
+  let inp = [cunit| int* f(void) { return x; } int* g() {} int* f2(void); int* g2();  |]
+  let BodiesPP{..} = getBodiesPP1 inp
+  putStrLn decls
+  return $ decls == "int *f(void);\nint *g();\n"

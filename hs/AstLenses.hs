@@ -16,6 +16,10 @@ funcName :: Lens' Func String
 funcName op (Func a (Id b c) d e f g) = op b <&> \b' -> Func a (Id b' c) d e f g
 funcName op (OldFunc a (Id b c) d e f g h) = op b <&> \b' -> OldFunc a (Id b' c) d e f g h
 
+funcPtr :: Lens' Func Decl
+funcPtr op (Func a b c d e f) = op c <&> \c -> Func a b c d e f
+funcPtr op (OldFunc a b c d e f g) = op c <&> \c -> OldFunc a b c d e f g
+
 funcDs :: Lens' Func DeclSpec
 funcDs op (Func a b c d e f) = op a <&> \a' -> Func a' b c d e f
 funcDs op (OldFunc a b c d e f g) = op a <&> \a' -> OldFunc a' b c d e f g
