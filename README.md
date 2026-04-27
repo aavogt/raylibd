@@ -66,3 +66,17 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 - [ ] rewriteAssetLoads is wrong with `Shader sh[2] = { LoadShader(vs, fs); } ;`
 - [ ] hpc coverage
 - [ ] integration tests
+- [ ] name anonymous structs
+
+      dll.c: In function ‘ReinitAlloc’:
+      dll.c:284:19: error: incompatible types when assigning to type ‘struct <anonymous>’ from type ‘struct <anonymous>’
+        284 |     t->entities = s->entities;
+
+      struct {
+        float x[NSTORE];
+        float *y, *z;
+      } store;
+
+      vs the workaround:
+      typedef struct { float x[NSTORE]; } Store;
+      Store store;
