@@ -273,12 +273,8 @@ arraySizeChanged field prevField =
 
 initEqual :: Maybe Initializer -> Maybe Initializer -> Bool
 initEqual Nothing Nothing = True
-initEqual (Just a) (Just b) = not (cinitNE a b)
+initEqual (Just a) (Just b) = a == b
 initEqual _ _ = False
-
-cinitNE :: Initializer -> Initializer -> Bool
-cinitNE (ExpInitializer (Const a _) _) (ExpInitializer (Const b _) _) = not (cinitEQ a b)
-cinitNE _ _ = False
 
 cinitEQ :: Const -> Const -> Bool
 cinitEQ (StringConst s _ _) (StringConst t _ _) = s == t
@@ -337,3 +333,11 @@ test6 = do
     let BodiesPP {..} = getBodiesPP1 inp
     putStrLn initbody
     return $ not $ "1, 2, 3" `isInfixOf` initbody
+
+test7 :: IO Bool
+test7 = do
+  let [_, BodiesPP{ ..} ] = getBodiesPP [
+          [cunit| int y = 1; int x = f(1); |],
+          [cunit| int y = 2; int x = f(2); |] ]
+  putStrLn reinitinplacebody
+  return ('x' `elem` reinitinplacebody)
