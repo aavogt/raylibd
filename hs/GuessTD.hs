@@ -32,7 +32,7 @@ TypedefStructTagNoSemi. Item ::= "typedef" "struct" Ident "{" [Field] "}" Ident;
 TypedefAlias. Item ::= "typedef" Type Declarator ";";
 FunDecl. Item ::= Type Ident "(" [Param] ")" ";";
 DeclInit. Item ::= Type Declarator "=" Initializer ";";
-Decl. Item ::= Type Declarator ";";
+Decl. Item ::= Type [Declarator] ";";
 
 separator Field "";
 InitializerIdent. Initializer ::= Ident;
@@ -59,6 +59,7 @@ UnionAnon. Type ::= "union" "{" [Field] "}";
 UnionAnonTag. Type ::= "union" Ident "{" [Field] "}";
 StructAnon. Type ::= "struct" "{" [Field] "}";
 StructAnonTag. Type ::= "struct" Ident "{" [Field] "}";
+Struct. Type ::= "struct" [Declarator];
 EnumAnon. Type ::= "enum" "{" [EnumItem] "}";
 EnumAnonTag. Type ::= "enum" Ident "{" [EnumItem] "}";
 EnumTag. Type ::= "enum" Ident;
@@ -79,10 +80,28 @@ DAnonPtr. Declarator ::= "*";
 DPtr. Declarator ::= "*" Declarator;
 DArray. Declarator ::= Declarator "[" "]";
 DArraySized. Declarator ::= Declarator "[" Number "]";
+DArraySizedIdent. Declarator ::= Declarator "[" Ident "]";
 |]
 
 
 e1 = [str|
+    typedef struct Entity {
+      int line;
+      enum { Entity_NONE, Entity_POINT, Entity_SEG, Entity_CONSTRAINT } tag;
+      union {
+        Vector2 point;
+        struct {
+          struct Entity *a, *b;
+        } seg;
+        struct {
+          ConstraintKind kind;
+          int argc;
+          Entity *args[MAX_CARGS]; // array not supported yet
+          float value;
+        } constraint;
+      };
+    } Entity;
+
     typedef struct {
       Vector2 p[2];
       bool placed[2];
@@ -341,6 +360,7 @@ typeNames ty =
     Unsigned -> []
     UnionAnon fields -> fieldNames fields
     UnionAnonTag name fields -> identName name : fieldNames fields
+    Struct name -> concatMap declaratorName name
     StructAnon fields -> fieldNames fields
     StructAnonTag name fields -> identName name : fieldNames fields
     EnumAnon _ -> []
