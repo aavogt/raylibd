@@ -66,6 +66,7 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 - [ ] rewriteAssetLoads is wrong with `Shader sh[2] = { LoadShader(vs, fs); } ;`
 - [ ] hpc coverage
 - [ ] integration tests
+- [ ] deleted structs are used but not defined in the generated code
 - [ ] name anonymous structs
 
       dll.c: In function ‘ReinitAlloc’:
