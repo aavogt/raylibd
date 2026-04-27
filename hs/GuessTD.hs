@@ -2,7 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -w #-}
 
-module GuessTD where
+module GuessTD (guessTypeDefs) where
 
 import Control.Monad
 import Data.Char (isSpace)
@@ -55,6 +55,8 @@ Float. Type ::= "float";
 Double. Type ::= "double";
 Signed. Type ::= "signed";
 Unsigned. Type ::= "unsigned";
+UnionAnon. Type ::= "union" "{" [Field] "}";
+UnionAnonTag. Type ::= "union" Ident "{" [Field] "}";
 StructAnon. Type ::= "struct" "{" [Field] "}";
 StructAnonTag. Type ::= "struct" Ident "{" [Field] "}";
 EnumAnon. Type ::= "enum" "{" [EnumItem] "}";
@@ -109,10 +111,11 @@ e1 = [str|
     bool poly_has_anchor = false;
   |]
 
+eqset a b = null (a\\b) && null (b \\a)
+
 test1 :: IO Bool
 test1 = do
   let (err, tds) = guessTypeDefs (C8.pack e1)
-      eqset a b = null (a\\b) && null (b \\a)
       success = tds `eqset` words "Vector2 bool Seg size_t Segs Seg2 Segs2 T2 T3 T4 Entities X"
   unless (null err) $ print ("err", err)
   print tds
@@ -127,6 +130,12 @@ test2 = do
       print (err, r)
       return err) inis
   return (all null err)
+
+test3 :: IO Bool
+test3 = do
+  ("", s) <- return $ guessTypeDefs $ C8.pack "typedef struct { union { Vector2 point; }; } X;"
+  print s
+  return (s `eqset` words "Vector2 X")
 
 guessTypeDefs :: C8.ByteString -> (String, [String])
 guessTypeDefs cfile =
@@ -330,6 +339,8 @@ typeNames ty =
     Double -> []
     Signed -> []
     Unsigned -> []
+    UnionAnon fields -> fieldNames fields
+    UnionAnonTag name fields -> identName name : fieldNames fields
     StructAnon fields -> fieldNames fields
     StructAnonTag name fields -> identName name : fieldNames fields
     EnumAnon _ -> []
