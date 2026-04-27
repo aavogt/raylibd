@@ -103,6 +103,7 @@ toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. 
   where
     proto = Proto (f ^. funcPtr) (f ^. funcParams) noLoc
 toDecl td@(DecDef (TypedefGroup {}) _) = Just td
+toDecl td@(DecDef (InitGroup (DeclSpec [] [] Tstruct{} _) [] [] _) _) = Just td
 toDecl _ = Nothing
 
 --------------------------------------------------------------------------------
@@ -348,3 +349,13 @@ test8 = do
   let BodiesPP{..} = getBodiesPP1 inp
   putStrLn decls
   return $ decls == "int *f(void);\nint *g();\n"
+
+test9 :: IO Bool
+test9 = do
+  let inp = [cunit|
+                typedef struct { int abc; } X;
+                typedef struct Entity Entity;
+                struct Entity { int xyz; };
+                  |]
+  let BodiesPP{..} = getBodiesPP1 inp
+  return (all (`isInfixOf` decls) ["abc", "xyz", "Entity Entity"])
