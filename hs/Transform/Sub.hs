@@ -10,7 +10,7 @@ import Data.Maybe
 import Data.Ord (comparing)
 import qualified Data.Set as S
 import Language.C hiding (mkIdent)
-import Language.C.Quote.C
+import Language.C.Quote.GCC
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.Mainland.Class
 import Text.Show.Pretty (pPrint)
@@ -359,3 +359,10 @@ test9 = do
                   |]
   let BodiesPP{..} = getBodiesPP1 inp
   return (all (`isInfixOf` decls) ["abc", "xyz", "Entity Entity"])
+
+testa :: IO Bool
+testa = do
+  let inp = [cunit| typedef struct { union { int x; }; } T; |]
+  let BodiesPP{..} = getBodiesPP1 inp
+  putStrLn decls
+  return True

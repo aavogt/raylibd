@@ -153,7 +153,7 @@ parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
           | otherwise = ("", [])
   unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
   whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
-  return $ parse [] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
+  return $ parse [Gcc] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
 
 notRemoved = \case
   Removed {} -> False
