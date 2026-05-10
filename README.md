@@ -67,6 +67,8 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 - [ ] hpc coverage
 - [ ] integration tests
 - [ ] deleted structs are used but not defined in the generated code
+- [ ] moving code to a #include "foo.inc" breaks the build/recompilation checking suggest/do `rm dll.c && make`
+- [ ] raylibd init\ntic\npicks  turing.c not tictagtoe.c, so drop .d or change the cost of inserts to depend on in/out
 - [ ] name anonymous structs
 
       dll.c: In function ‘ReinitAlloc’:
