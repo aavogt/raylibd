@@ -22,12 +22,16 @@ data-files:
     init/11-turing.c
     init/21-ball-paddle.c
     init/22-ball-spring-trail.c
+    init/30-ws2812-array.c
 
 executable raylibd
   main-is: main.hs
   other-modules:
       AstLenses
       GuessTD
+      GuessTD.CollectTypeNames
+      GuessTD.Lex
+      GuessTD.Parsers
       Init.Pick
       Init.PickAlign
       Rename
@@ -60,8 +64,7 @@ executable raylibd
       TypeApplications
       FlexibleContexts
   build-depends:
-      BNFC-meta
-    , PyF
+      PyF
     , ansi-terminal
     , array
     , base
@@ -75,8 +78,10 @@ executable raylibd
     , language-c-quote
     , lens
     , mainland-pretty
+    , parsers
     , pretty-show
     , process
+    , regex-applicative
     , srcloc
     , time
     , transformers
@@ -89,6 +94,9 @@ test-suite hspec
   other-modules:
       AstLenses
       GuessTD
+      GuessTD.CollectTypeNames
+      GuessTD.Lex
+      GuessTD.Parsers
       Init.Pick
       Init.PickAlign
       Rename
@@ -126,8 +134,7 @@ test-suite hspec
   build-tool-depends:
       hspec-discover:hspec-discover
   build-depends:
-      BNFC-meta
-    , PyF
+      PyF
     , ansi-terminal
     , array
     , base
@@ -144,8 +151,10 @@ test-suite hspec
     , language-c-quote
     , lens
     , mainland-pretty
+    , parsers
     , pretty-show
     , process
+    , regex-applicative
     , srcloc
     , time
     , transformers

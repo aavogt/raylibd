@@ -21,7 +21,7 @@ import System.IO
 import System.Process
 import Text.Show.Pretty hiding (getDataDir)
 import Transform
-import GuessTD (guessTypeDefs)
+import GuessTD (guessTD)
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
@@ -40,7 +40,7 @@ watchmode =
           \ Shader  MaterialMap  Material  Mesh  Model  ModelAnimation  Transform  BoneInfo  Ray  RayCollision  BoundingBox  Wave  AudioStream  \
           \ Sound  Music  VrDeviceInfo  VrStereoConfig  FilePathList  AutomationEvent  AutomationEventList RenderTexture2D"
           &= help "override raylib typedef struct",
-      typedefs_extra = [] &= help "hardcode extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges skipping auto detection by GuessTD.guessTypeDefs parser",
+      typedefs_extra = [] &= help "hardcode extra c typedefs for example --typedefs-extra=VAR,uint8_t,Expredges skipping auto detection by GuessTD.guessTD parser",
       echo = False &= help "echo the generated file to stdout",
       once = False &= help "don't watch"
     }
@@ -149,7 +149,7 @@ parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
         ExitSuccess -> out
         _ -> ""
   let (err, inferredTypedefs)
-          | inferTypedefs = guessTypeDefs (C8.pack contents)
+          | inferTypedefs = guessTD (C8.pack contents)
           | otherwise = ("", [])
   unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
   whenLoud $ pPrint ("new typedefs:", inferredTypedefs)

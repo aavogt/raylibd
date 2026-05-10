@@ -1,88 +1,26 @@
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -w #-}
 
-module GuessTD (guessTypeDefs) where
+module GuessTD (guessTD) where
 
 import Control.Monad
-import Data.Char (isSpace)
 import qualified Data.ByteString.Char8 as C8
 import Data.List
-import Language.LBNF
-import PyF
+import Data.Set (Set)
+import qualified Data.Set as S
 import System.Directory
 import Data.Functor
+import PyF
 
-bnfc
-  [lbnf|
-comment "//";
-comment "/*" "*/";
+import GuessTD.Lex
+import GuessTD.CollectTypeNames
 
-token Number digit+;
-
-entrypoints Program;
-
-Program. Program ::= [Item];
-separator Item "";
-
-TypedefStruct. Item ::= "typedef" "struct" "{" [Field] "}" Ident ";";
-TypedefStructNoSemi. Item ::= "typedef" "struct" "{" [Field] "}" Ident;
-TypedefStructTag. Item ::= "typedef" "struct" Ident "{" [Field] "}" Ident ";";
-TypedefStructTagNoSemi. Item ::= "typedef" "struct" Ident "{" [Field] "}" Ident;
-TypedefAlias. Item ::= "typedef" Type Declarator ";";
-FunDecl. Item ::= Type Ident "(" [Param] ")" ";";
-DeclInit. Item ::= Type Declarator "=" Initializer ";";
-Decl. Item ::= Type [Declarator] ";";
-
-separator Field "";
-InitializerIdent. Initializer ::= Ident;
-InitializerNumber. Initializer ::= Number;
-InitializerTrue. Initializer ::= "true";
-InitializerFalse. Initializer ::= "false";
-Field. Field ::= Type [Declarator] ";";
-
-separator Declarator ",";
-separator Param ",";
-Param. Param ::= Type Declarator;
-ParamOnly. Param ::= Type;
-
-Void. Type ::= "void";
-Char. Type ::= "char";
-Short. Type ::= "short";
-Int. Type ::= "int";
-Long. Type ::= "long";
-Float. Type ::= "float";
-Double. Type ::= "double";
-Signed. Type ::= "signed";
-Unsigned. Type ::= "unsigned";
-UnionAnon. Type ::= "union" "{" [Field] "}";
-UnionAnonTag. Type ::= "union" Ident "{" [Field] "}";
-StructAnon. Type ::= "struct" "{" [Field] "}";
-StructAnonTag. Type ::= "struct" Ident "{" [Field] "}";
-Struct. Type ::= "struct" [Declarator];
-EnumAnon. Type ::= "enum" "{" [EnumItem] "}";
-EnumAnonTag. Type ::= "enum" Ident "{" [EnumItem] "}";
-EnumTag. Type ::= "enum" Ident;
-StaticType. Type ::= "static" Type;
-ConstType. Type ::= "const" Type;
-ExternType. Type ::= "extern" Type;
-RegisterType. Type ::= "register" Type;
-AutoType. Type ::= "auto" Type;
-RestrictType. Type ::= "restrict" Type;
-TypeIdent. Type ::= Ident;
-
-separator EnumItem ",";
-EnumItem. EnumItem ::= Ident;
-EnumItemVal. EnumItem ::= Ident "=" Number;
-
-DIdent. Declarator ::= Ident;
-DAnonPtr. Declarator ::= "*";
-DPtr. Declarator ::= "*" Declarator;
-DArray. Declarator ::= Declarator "[" "]";
-DArraySized. Declarator ::= Declarator "[" Number "]";
-DArraySizedIdent. Declarator ::= Declarator "[" Ident "]";
-|]
-
+-- | guess typedefs
+guessTD :: C8.ByteString -> (String, [String])
+guessTD cfile =
+  let input = C8.unpack cfile
+      toks = collapseParens (collapseBlocks (lexTokens input))
+      names = S.filter (not . isBuiltin) (collectTypeNames (splitStatements toks))
+   in ("", S.toList names)
 
 e1 = [str|
     typedef struct Entity {
@@ -99,6 +37,10 @@ e1 = [str|
           Entity *args[MAX_CARGS]; // array not supported yet
           float value;
         } constraint;
+        C2 (*make)(C1 *); // function pointer field
+        C3 (*combine)(C4, C5 *); // function pointer field
+        C6 (*callbacks[2])(C7 *); // array of callbacks
+        C8 (*(*factory)(C9))(C10 *); // returns pointer to function
       };
     } Entity;
 
@@ -128,15 +70,61 @@ e1 = [str|
     static T3 b;
     T4 y[23] = {1,2,3}, z = 4;
     bool poly_has_anchor = false;
+
+    bool h() {
+      int32_t R = 0, G = 0, B = 0;
+      return a || b;
+    }
+
+    typedef struct B1 B2;
+    typedef B1 *(*B2)(B3 *a);
+    typedef B4 (*B5)(B6 b, B7 *c);
+    typedef B8 *(*B9)(B10 *a);
+    typedef B11 (*(*B12)(B13 b))(B14 *c);
+
+  int main() {
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    InitWindow(800, 600, "main.c");
+    SetTargetFPS(144);
+    while (!WindowShouldClose()) {
+      static float time = 0;
+      static bool up = true;
+      if (time * 10 > 512) {
+        up = false;
+        time = 51;
+      }
+      if (time <= 0) {
+        up = true;
+        time = 0;
+      }
+      if (up)
+        time += 10 * GetFrameTime();
+      else
+        time -= 10 * GetFrameTime();
+      lut_init();
+      render_frame(time * 10);
+      BeginDrawing();
+      ClearBackground(BLACK);
+      draw_pixels();
+      EndDrawing();
+    }
+    CloseWindow();
+  }
+
+  float cy = fmaxf(py, fminf(ball.y, py + paddlew));
   |]
 
 eqset a b = null (a\\b) && null (b \\a)
 
 test1 :: IO Bool
 test1 = do
-  let (err, tds) = guessTypeDefs (C8.pack e1)
-      success = tds `eqset` words "Vector2 bool Seg size_t Segs Seg2 Segs2 T2 T3 T4 Entities X"
-  unless (null err) $ print ("err", err)
+  let (err, tds) = guessTD (C8.pack e1)
+      success = tds `eqset` expected
+      expected = words "ConstraintKind Vector2 bool Seg size_t \
+            \Segs Seg2 Segs2 T2 T3 T4 Entities Entity X int32_t"
+            ++ [ "B" ++ show n | n <- [1 .. 14] ]
+            ++ [ "C" ++ show n | n <- [1 .. 10] ]
+  unless success $ print ("err", err,  tds \\ expected, expected \\ tds)
   print tds
   return success
 
@@ -145,242 +133,13 @@ test2 = do
   inis <- getDirectoryContents "init" <&> filter (".c" `isSuffixOf`)
   err <- mapM (\f -> do
       print f
-      (err, r) <- guessTypeDefs <$> C8.readFile ("init/"++f)
+      (err, r) <- guessTD <$> C8.readFile ("init/"++f)
       print (err, r)
       return err) inis
   return (all null err)
 
 test3 :: IO Bool
 test3 = do
-  ("", s) <- return $ guessTypeDefs $ C8.pack "typedef struct { union { Vector2 point; }; } X;"
+  ("", s) <- return $ guessTD $ C8.pack "typedef struct { union { Vector2 point; }; } X;"
   print s
   return (s `eqset` words "Vector2 X")
-
-guessTypeDefs :: C8.ByteString -> (String, [String])
-guessTypeDefs cfile =
-  case pProgram (myLexer input) of
-    Bad msg -> (msg, [])
-    Ok (Program items) -> ("", nub (concatMap itemNames items))
-  where
-    input = stripFunctionBodies (stripInitializers (stripCommentsAndCpp (C8.unpack cfile)))
-
-stripInitializers :: String -> String
-stripInitializers = go False False False 0 0
-  where
-    go _ _ _ _ _ [] = []
-    go inString inChar escaped braceDepth parenDepth (c:cs)
-      | inString =
-          let escaped' = not escaped && c == '\\'
-              inString' = if not escaped && c == '"' then False else True
-           in c : go inString' inChar escaped' braceDepth parenDepth cs
-      | inChar =
-          let escaped' = not escaped && c == '\\'
-              inChar' = if not escaped && c == '\'' then False else True
-           in c : go inString inChar' escaped' braceDepth parenDepth cs
-      | c == '"' = c : go True False False braceDepth parenDepth cs
-      | c == '\'' = c : go False True False braceDepth parenDepth cs
-      | c == '{' = c : go False False False (braceDepth + 1) parenDepth cs
-      | c == '}' = c : go False False False (max 0 (braceDepth - 1)) parenDepth cs
-      | c == '(' = c : go False False False braceDepth (parenDepth + 1) cs
-      | c == ')' = c : go False False False braceDepth (max 0 (parenDepth - 1)) cs
-      | c == '='
-        , braceDepth == 0
-        , parenDepth == 0 =
-          let rest = skipInitializer 0 0 cs
-           in ';' : go False False False braceDepth parenDepth rest
-      | c == ','
-        , braceDepth == 0
-        , parenDepth == 0 =
-          let rest = skipInitializer 0 0 cs
-           in ';' : go False False False braceDepth parenDepth rest
-      | otherwise = c : go False False False braceDepth parenDepth cs
-
-    skipInitializer _ _ [] = []
-    skipInitializer braceDepth parenDepth (c:cs)
-      | c == '"' = skipInitializer braceDepth parenDepth (skipString cs)
-      | c == '\'' = skipInitializer braceDepth parenDepth (skipChar cs)
-      | c == '{' = skipInitializer (braceDepth + 1) parenDepth cs
-      | c == '}' = skipInitializer (max 0 (braceDepth - 1)) parenDepth cs
-      | c == '(' = skipInitializer braceDepth (parenDepth + 1) cs
-      | c == ')' = skipInitializer braceDepth (max 0 (parenDepth - 1)) cs
-      | c == ';'
-        , braceDepth == 0
-        , parenDepth == 0 = cs
-      | otherwise = skipInitializer braceDepth parenDepth cs
-
-    skipString = go False
-      where
-        go _ [] = []
-        go escaped (c:cs)
-          | not escaped && c == '\\' = go True cs
-          | not escaped && c == '"' = cs
-          | otherwise = go False cs
-
-    skipChar = go False
-      where
-        go _ [] = []
-        go escaped (c:cs)
-          | not escaped && c == '\\' = go True cs
-          | not escaped && c == '\'' = cs
-          | otherwise = go False cs
-stripCommentsAndCpp :: String -> String
-stripCommentsAndCpp = stripBlockComments . stripLineComments . stripCppLines
-
-stripCppLines = unlines . map dropIfCpp . lines
-  where
-    dropIfCpp line = case dropWhile isSpace line of
-      ('#' : _) -> ""
-      _ -> line
-
-stripLineComments :: String -> String
-stripLineComments = go False False False
-  where
-    go _ _ _ [] = []
-    go inString inChar escaped (c1:c2:cs)
-      | inString = c1 : go (not (not escaped && c1 == '"')) False (not escaped && c1 == '\\') (c2:cs)
-      | inChar = c1 : go False (not (not escaped && c1 == '\'')) (not escaped && c1 == '\\') (c2:cs)
-      | c1 == '"' = c1 : go True False False (c2:cs)
-      | c1 == '\'' = c1 : go False True False (c2:cs)
-      | c1 == '/' && c2 == '/' = dropUntilNewline cs
-      | otherwise = c1 : go False False False (c2:cs)
-    go _ _ _ [c] = [c]
-
-    dropUntilNewline [] = []
-    dropUntilNewline (c:cs)
-      | c == '\n' = c : go False False False cs
-      | otherwise = dropUntilNewline cs
-
-stripBlockComments :: String -> String
-stripBlockComments = go False False False
-  where
-    go _ _ _ [] = []
-    go inString inChar escaped (c1:c2:cs)
-      | inString = c1 : go (not (not escaped && c1 == '"')) False (not escaped && c1 == '\\') (c2:cs)
-      | inChar = c1 : go False (not (not escaped && c1 == '\'')) (not escaped && c1 == '\\') (c2:cs)
-      | c1 == '"' = c1 : go True False False (c2:cs)
-      | c1 == '\'' = c1 : go False True False (c2:cs)
-      | c1 == '/' && c2 == '*' = skipBlock cs
-      | otherwise = c1 : go False False False (c2:cs)
-    go _ _ _ [c] = [c]
-
-    skipBlock [] = []
-    skipBlock (c1:c2:cs)
-      | c1 == '*' && c2 == '/' = go False False False cs
-      | otherwise = skipBlock (c2:cs)
-
-stripFunctionBodies :: String -> String
-stripFunctionBodies = go Nothing 0 False False False
-  where
-    go _ _ _ _ _ [] = []
-    go prevNonSpace parenDepth inString inChar escaped (c:cs)
-      | inString =
-          let escaped' = not escaped && c == '\\'
-              inString' = if not escaped && c == '"' then False else True
-           in c : go prevNonSpace parenDepth inString' inChar escaped' cs
-      | inChar =
-          let escaped' = not escaped && c == '\\'
-              inChar' = if not escaped && c == '\'' then False else True
-           in c : go prevNonSpace parenDepth inString inChar' escaped' cs
-      | c == '"' = c : go prevNonSpace parenDepth True False False cs
-      | c == '\'' = c : go prevNonSpace parenDepth False True False cs
-      | c == '(' = c : go (nextPrev c prevNonSpace) (parenDepth + 1) False False False cs
-      | c == ')' = c : go (nextPrev c prevNonSpace) (max 0 (parenDepth - 1)) False False False cs
-      | c == '{'
-        , parenDepth == 0
-        , prevNonSpace == Just ')' =
-          let rest = skipBlock 1 cs
-           in ';' : go (Just ';') parenDepth False False False rest
-      | otherwise = c : go (nextPrev c prevNonSpace) parenDepth False False False cs
-
-    nextPrev ch prev
-      | isSpace ch = prev
-      | otherwise = Just ch
-
-    skipBlock _ [] = []
-    skipBlock depth (c:cs)
-      | c == '"' = skipBlock depth (skipString cs)
-      | c == '\'' = skipBlock depth (skipChar cs)
-      | c == '{' = skipBlock (depth + 1) cs
-      | c == '}' = if depth == 1 then cs else skipBlock (depth - 1) cs
-      | otherwise = skipBlock depth cs
-
-    skipString = go False
-      where
-        go _ [] = []
-        go escaped (c:cs)
-          | not escaped && c == '\\' = go True cs
-          | not escaped && c == '"' = cs
-          | otherwise = go False cs
-
-    skipChar = go False
-      where
-        go _ [] = []
-        go escaped (c:cs)
-          | not escaped && c == '\\' = go True cs
-          | not escaped && c == '\'' = cs
-          | otherwise = go False cs
-
-itemNames :: Item -> [String]
-itemNames item =
-  case item of
-    TypedefStruct fields name -> fieldNames fields ++ [identName name]
-    TypedefStructNoSemi fields name -> fieldNames fields ++ [identName name]
-    TypedefStructTag _ fields name -> fieldNames fields ++ [identName name]
-    TypedefStructTagNoSemi _ fields name -> fieldNames fields ++ [identName name]
-    TypedefAlias ty decl -> typeNames ty ++ declaratorName decl
-    FunDecl ty _ params -> typeNames ty ++ concatMap paramNames params
-    Decl ty decl -> typeNames ty
-    DeclInit ty _ _ -> typeNames ty
-
-paramNames :: Param -> [String]
-paramNames param =
-  case param of
-    Param ty decl -> typeNames ty
-    ParamOnly ty -> typeNames ty
-
-fieldNames :: [Field] -> [String]
-fieldNames fields = concatMap fieldName fields
-
-fieldName :: Field -> [String]
-fieldName field =
-  case field of
-    Field ty decl -> typeNames ty
-
-typeNames :: Type -> [String]
-typeNames ty =
-  case ty of
-    Void -> []
-    Char -> []
-    Short -> []
-    Int -> []
-    Long -> []
-    Float -> []
-    Double -> []
-    Signed -> []
-    Unsigned -> []
-    UnionAnon fields -> fieldNames fields
-    UnionAnonTag name fields -> identName name : fieldNames fields
-    Struct name -> concatMap declaratorName name
-    StructAnon fields -> fieldNames fields
-    StructAnonTag name fields -> identName name : fieldNames fields
-    EnumAnon _ -> []
-    EnumAnonTag name _ -> [identName name]
-    EnumTag name -> [identName name]
-    StaticType inner -> typeNames inner
-    ConstType inner -> typeNames inner
-    ExternType inner -> typeNames inner
-    RegisterType inner -> typeNames inner
-    AutoType inner -> typeNames inner
-    RestrictType inner -> typeNames inner
-    TypeIdent name -> [identName name]
-
-declaratorName :: Declarator -> [String]
-declaratorName decl =
-  case decl of
-    DIdent name -> [identName name]
-    DPtr inner -> declaratorName inner
-    DArray inner -> declaratorName inner
-    DArraySized inner _ -> declaratorName inner
-
-identName :: Ident -> String
-identName (Ident x) = x

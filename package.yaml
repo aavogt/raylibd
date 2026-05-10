@@ -19,7 +19,8 @@ dependencies:
     - unix
     - deepseq
     - array
-    - BNFC-meta
+    - regex-applicative
+    - parsers
 
 
 data-files:
