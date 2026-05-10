@@ -10,18 +10,27 @@ import Control.Monad.Trans.State.Strict
 import Language.C.Quote
 import Control.Lens
 import Data.Data.Lens (biplate)
-import Data.List (foldl')
+import Data.List (foldl', isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Control.Monad.Trans.Class
 import Data.Maybe
+import Language.C.Quote.GCC
+import Text.PrettyPrint.Mainland.Class
+import Text.PrettyPrint.Mainland
 
+test1 :: IO Bool
+test1 = do
+  let cu = [cunit| void g(int i) { i + 1; } void f() { for (int i=0; i<10; i++) { x = i; } } |]
+  let rcu = pretty 100 $ ppr $ rename cu
+  putStrLn rcu
+  return ("i_0" `isInfixOf` rcu)
 
 -- | Rename locally scoped variables that shadow names from outer scopes.
 rename :: [Definition] -> [Definition]
 rename defs =
   let env = Env {envUsedNames = collectUsedNames defs, envGlobalNames = collectGlobalNames defs}
-   in evalState (runReaderT (mapM renameDefinition defs) env) 0
+   in evalState (runReaderT (evalStateT (mapM renameDefinition defs) [emptyScope]) env) 0
 
 collectUsedNames :: [Definition] -> UsedNames
 collectUsedNames defs = S.fromList [name | Id name _ <- defs ^.. biplate]
@@ -71,7 +80,9 @@ pushScope = modify (emptyScope :)
 popScope :: LocalM ()
 popScope = modify \case
   [] -> []
-  (_ : rest) -> rest
+  [scope] -> []
+  (scope : parent : rest) ->
+    parent {scopeUsed = scopeUsed scope `S.union` scopeUsed parent} : rest
 
 registerUsed :: String -> LocalM ()
 registerUsed name = modify \case
@@ -125,26 +136,20 @@ freshName env scopes base = do
 -- Rename traversal
 --------------------------------------------------------------------------------
 
-renameDefinition :: Definition -> RenameM Definition
+renameDefinition :: Definition -> LocalM Definition
 renameDefinition def = case def of
-  FuncDef func loc -> FuncDef <$> renameFunc func <*> pure loc
+  FuncDef func loc -> FuncDef <$> withScope (renameFunc func) <*> pure loc
   _ -> pure def
 
-renameFunc :: Func -> RenameM Func
+renameFunc :: Func -> LocalM Func
 renameFunc func = case func of
   Func ds ident decl params items loc -> do
-    (params', items') <- evalStateT (withScope (do
-      params' <- renameParams params
-      items' <- renameItems items
-      return (params', items')
-      )) []
+    params' <- renameParams params
+    items' <- renameItems items
     return (Func ds ident decl params' items' loc)
   OldFunc ds ident decl ids params items loc -> do
-    (ids', params', items') <- evalStateT (withScope (do
-      (ids', params') <- renameOldParams ids params
-      items' <- renameItems items
-      return (ids', params', items')
-      )) []
+    (ids', params') <- renameOldParams ids params
+    items' <- renameItems items
     return (OldFunc ds ident decl ids' params' items' loc)
 
 renameParams :: Params -> LocalM Params
