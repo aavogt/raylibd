@@ -147,9 +147,11 @@ parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  let (err, inferredTypedefs)
-          | inferTypedefs = guessTD (C8.pack contents)
-          | otherwise = ("", [])
+  (err, inferredTypedefs) <-
+    if inferTypedefs
+      then do
+        guessTD <$> C8.readFile input
+      else return ("", [])
   unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
   whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
   return $ parse [Gcc] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
