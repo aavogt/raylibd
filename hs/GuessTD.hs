@@ -4,15 +4,14 @@ module GuessTD (guessTD) where
 
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
+import Data.Functor
 import Data.List
 import Data.Set (Set)
 import qualified Data.Set as S
-import System.Directory
-import Data.Functor
-import PyF
-
-import GuessTD.Lex
 import GuessTD.CollectTypeNames
+import GuessTD.Lex
+import PyF
+import System.Directory
 
 -- | guess typedefs
 guessTD :: C8.ByteString -> (String, [String])
@@ -22,7 +21,8 @@ guessTD cfile =
       names = S.filter (not . isBuiltin) (collectTypeNames (splitStatements toks))
    in ("", S.toList names)
 
-e1 = [str|
+e1 =
+  [str|
     typedef struct Entity {
       int line;
       enum { Entity_NONE, Entity_POINT, Entity_SEG, Entity_CONSTRAINT } tag;
@@ -114,28 +114,34 @@ e1 = [str|
   float cy = fmaxf(py, fminf(ball.y, py + paddlew));
   |]
 
-eqset a b = null (a\\b) && null (b \\a)
+eqset a b = null (a \\ b) && null (b \\ a)
 
 test1 :: IO Bool
 test1 = do
   let (err, tds) = guessTD (C8.pack e1)
       success = tds `eqset` expected
-      expected = words "ConstraintKind Vector2 bool Seg size_t \
-            \Segs Seg2 Segs2 T2 T3 T4 Entities Entity X int32_t"
-            ++ [ "B" ++ show n | n <- [1 .. 14] ]
-            ++ [ "C" ++ show n | n <- [1 .. 10] ]
-  unless success $ print ("err", err,  tds \\ expected, expected \\ tds)
+      expected =
+        words
+          "ConstraintKind Vector2 bool Seg size_t \
+          \Segs Seg2 Segs2 T2 T3 T4 Entities Entity X int32_t"
+          ++ ["B" ++ show n | n <- [1 .. 14]]
+          ++ ["C" ++ show n | n <- [1 .. 10]]
+  unless success $ print ("err", err, tds \\ expected, expected \\ tds)
   print tds
   return success
 
 test2 :: IO Bool
 test2 = do
   inis <- getDirectoryContents "init" <&> filter (".c" `isSuffixOf`)
-  err <- mapM (\f -> do
-      print f
-      (err, r) <- guessTD <$> C8.readFile ("init/"++f)
-      print (err, r)
-      return err) inis
+  err <-
+    mapM
+      ( \f -> do
+          print f
+          (err, r) <- guessTD <$> C8.readFile ("init/" ++ f)
+          print (err, r)
+          return err
+      )
+      inis
   return (all null err)
 
 test3 :: IO Bool
