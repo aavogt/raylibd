@@ -100,6 +100,7 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
           x : xs ->
             let seen' = seen || (x == "#ifndef RAYLIBD")
              in x : takeUntilEndif (adjustN x n seen') seen' xs
+          [] -> []
         adjustN "#endif" n True = n - 1
         adjustN c n True | "#if" `isPrefixOf` c = n + 1
         adjustN _ n _ = n
