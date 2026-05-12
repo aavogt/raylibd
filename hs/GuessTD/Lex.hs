@@ -6,7 +6,7 @@ module GuessTD.Lex where
 
 import Data.Char
 import Data.List
-import Data.Loc (Loc(..), Pos, SrcLoc(..), advancePos, startPos)
+import Data.Loc (Loc(..), Pos (..), SrcLoc(..), advancePos, startPos)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Regex.Applicative
@@ -55,10 +55,19 @@ isQualifier = (`Set.member` qualifiers)
 isBuiltin :: String -> Bool
 isBuiltin = (`Set.member` builtinTypes)
 
+lineMarker = do
+  string "# "
+  line <- many (psym isDigit)
+  sym '"'
+  file <- many (psym (/= '"'))
+  sym '"'
+  pure (Pos file (read line) 1 0 )
+
 lexTokens :: String -> [Tok]
 lexTokens = go (startPos "<input>")
   where
     go _ [] = []
+    go _ (findLongestPrefix lineMarker -> Just (newPos, rest)) = go newPos (dropWhile (/= '\n') rest)
     go pos input@(stripPrefix "//" -> Just cs) =
       let pos' = advancePos (advancePos pos '/') '/'
           (pos'', rest) = skipLine pos' cs
