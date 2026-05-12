@@ -2,17 +2,19 @@
 
 module GuessTD.CollectTypeNames where
 
-import Data.Set (Set)
-import qualified Data.Set as S
-import Text.Regex.Applicative
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
 import Data.Maybe
+import Data.Loc (SrcLoc(..), Loc(..), Pos, posCoff)
+import Text.Regex.Applicative
 import Text.Parser.Combinators
 import Control.Lens hiding (enum)
 
 import GuessTD.Lex
 import GuessTD.Parsers
+import Control.Monad
 
-type P = RE Tok (Set String)
+type P = RE Tok (Map String SrcLoc)
 
 typePrefix :: P
 typePrefix = many (qualifierTok <|> symbolTok "*") *> typeCore
@@ -20,22 +22,25 @@ typePrefix = many (qualifierTok <|> symbolTok "*") *> typeCore
 typeCore :: P
 typeCore = structUnion
   <|> enum
-  <|> (Empty <$ builtinTok)
-  <|> (S.singleton <$> msymG _TIdent)
+  <|> (mempty <$ builtinTok)
+  <|> (singletonName <$> msymG _TIdent)
 
 structUnion :: P
 structUnion = do
   keywordTok "struct" <|> keywordTok "union"
   tag <- omsymG _TIdent
   inner <- omsymG _TBlock
-  pure (S.fromList tag <> S.unions (collectTypeNames . splitStatements <$> inner))
+  pure $ let
+      tagNames = namesFromList tag
+      innerNames = mconcat (collectTypeNames . splitStatements . snd <$> inner)
+    in (tagNames <> innerNames)
 
 enum :: P
 enum = do
   keywordTok "enum"
   tag <- omsymG _TIdent
   omsymG _TBlock
-  pure (S.fromList tag)
+  pure (namesFromList tag)
 
 param :: P
 param = do
@@ -44,18 +49,18 @@ param = do
   pure names
 
 params :: P
-params = S.unions <$> (param `sepBy` symbolTok ",")
+params = mconcat <$> (param `sepBy` symbolTok ",")
 
 function :: P
 function = do
   ret <- typePrefix
-  msymG _TIdent
+  void (msymG _TIdent)
   params <- parenParams
   many tokNotComma
   pure (ret <> params)
 
 parenParams :: P
-parenParams = fromMaybe mempty . match params <$> msymG _TParen
+parenParams = fromMaybe mempty . match params . snd <$> msymG _TParen
 
 typedef :: P
 typedef = do
@@ -63,7 +68,7 @@ typedef = do
   names <- typePrefix
   aliases <- typedefAliases
   many tokNotComma
-  pure (names <> S.fromList aliases)
+  pure (names <> namesFromList aliases)
 
 decl :: P
 decl = do
@@ -71,36 +76,55 @@ decl = do
   declarator `sepBy1` symbolTok ","
   pure names
 
-collectNested :: [Tok] -> Set String
-collectNested toks = S.unions [ collectTypeNames (splitStatements inner) | TBlock inner <- toks ]
+collectNested :: [Tok] -> Map String SrcLoc
+collectNested toks = mconcat [ collectTypeNames (splitStatements inner) | TBlock _ inner <- toks ]
 
 parenGroups :: [Tok] -> [[Tok]]
 parenGroups = go []
   where
     go acc [] = reverse acc
-    go acc (TParen inner:ts) =
+    go acc (TParen _ inner:ts) =
       let acc' = inner : parenGroups inner ++ acc
         in go acc' ts
     go acc (_:ts) = go acc ts
 
-collectParenParams :: [Tok] -> Set String
+collectParenParams :: [Tok] -> Map String SrcLoc
 collectParenParams toks =
   let declTokens = takeWhile (not . isAssign) toks
       matchParams group =
         case group of
-          (TSymbol "*":_) -> mempty
+          (TSymbol _ "*":_) -> mempty
           _ -> fromMaybe mempty (match params group)
-    in S.unions (matchParams <$> parenGroups declTokens)
+    in mconcat (matchParams <$> parenGroups declTokens)
   where
     isAssign t = case t of
-      TSymbol "=" -> True
+      TSymbol _ "=" -> True
       _ -> False
 
-collectAll :: [Tok] -> Set String
+collectAll :: [Tok] -> Map String SrcLoc
 collectAll toks =
   case match (typedef <|> function <|> decl) toks of
     Just names -> names <> collectParenParams toks <> collectNested toks
     Nothing -> collectNested toks
 
-collectTypeNames :: [[Tok]] -> Set String
-collectTypeNames statements = S.unions (map collectAll statements)
+collectTypeNames :: [[Tok]] -> Map String SrcLoc
+collectTypeNames statements = mconcat (map collectAll statements)
+
+namesFromList :: [NameLoc] -> Map String SrcLoc
+namesFromList = foldl insertEarliest mempty
+
+singletonName :: NameLoc -> Map String SrcLoc
+singletonName = namesFromList . pure
+
+insertEarliest ::  Map String SrcLoc -> NameLoc -> Map String SrcLoc
+insertEarliest m (loc, name) = M.insertWith keepEarliest name loc m
+
+keepEarliest :: SrcLoc -> SrcLoc -> SrcLoc
+keepEarliest newLoc oldLoc
+  | srcLocOffset newLoc < srcLocOffset oldLoc = newLoc
+  | otherwise = oldLoc
+
+srcLocOffset :: SrcLoc -> Int
+srcLocOffset (SrcLoc loc) = case loc of
+  NoLoc -> maxBound
+  Loc start _ -> posCoff start

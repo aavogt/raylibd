@@ -1,13 +1,13 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module GuessTD (guessTD) where
+module GuessTD (guessTD, guessTDloc) where
 
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Functor
 import Data.List
-import Data.Set (Set)
-import qualified Data.Set as S
+import qualified Data.Map.Strict as M
+import Data.Loc (SrcLoc)
 import GuessTD.CollectTypeNames
 import GuessTD.Lex
 import PyF
@@ -16,10 +16,15 @@ import System.Directory
 -- | guess typedefs
 guessTD :: C8.ByteString -> (String, [String])
 guessTD cfile =
+  let (err, names) = guessTDloc cfile
+   in (err, map fst names)
+
+guessTDloc :: C8.ByteString -> (String, [(String, SrcLoc)])
+guessTDloc cfile =
   let input = C8.unpack cfile
       toks = collapseParens (collapseBlocks (lexTokens input))
-      names = S.filter (not . isBuiltin) (collectTypeNames (splitStatements toks))
-   in ("", S.toList names)
+      names = M.filterWithKey (\name _ -> not (isBuiltin name)) (collectTypeNames (splitStatements toks))
+   in ("", M.toList names)
 
 e1 =
   [str|

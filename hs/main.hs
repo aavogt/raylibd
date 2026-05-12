@@ -9,7 +9,7 @@ import Data.IORef
 import Data.List
 import Data.Loc
 import Data.Maybe
-import GuessTD (guessTD)
+import GuessTD (guessTD, guessTDloc)
 import Init.Pick
 import Language.C hiding (Init)
 import Paths_raylibd
@@ -148,13 +148,15 @@ parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
   let contents = case exit of
         ExitSuccess -> out
         _ -> ""
-  (err, inferredTypedefs) <-
-    if inferTypedefs
-      then do
-        guessTD <$> C8.readFile input
-      else return ("", [])
+  loud <- isLoud
+  (err, inferredTypedefs) <- case (inferTypedefs, loud) of
+        (True, False) -> guessTD <$> C8.readFile input
+        (True, True) -> do
+          (e, i) <- guessTDloc <$> C8.readFile input
+          whenLoud $ pPrint ("new typedefs:", i)
+          return (e, map fst i)
+        _ -> return ("", [])
   unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
-  whenLoud $ pPrint ("new typedefs:", inferredTypedefs)
   return $ parse [Gcc] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
 
 notRemoved = \case
