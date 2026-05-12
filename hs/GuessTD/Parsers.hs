@@ -13,7 +13,11 @@ import GuessTD.Lex
 import Data.Loc
 import Data.Tuple
 
-type NameLoc = (SrcLoc, String)
+type NameLoc = (SLoc, String)
+
+type ParenLoc = (SLoc, [Tok])
+
+type BlockLoc = (SLoc, [Tok])
 
 -- | 'msym' except takes a prism/traversal
 --
@@ -24,6 +28,15 @@ msymG f = msym (^? f)
 
 omsymG :: Getting (First a) s a -> RE s [a]
 omsymG f = maybeToList <$> optional (msymG f)
+
+identTok :: RE Tok NameLoc
+identTok = msymG _TIdent
+
+parenTok :: RE Tok ParenLoc
+parenTok = msymG _TParen
+
+blockTok :: RE Tok BlockLoc
+blockTok = msymG _TBlock
 
 keywordTok :: String -> RE Tok String
 keywordTok kw = snd <$> msymG (_TKeyword . filtered ((==kw) . snd))
@@ -63,9 +76,9 @@ typedefAliases = catMaybes <$> decl `sepBy1` symbolTok ","
       pure name
 
     identOrParenIdent =
-      pure <$> msymG _TIdent <|> firstIdentInParen . snd <$> msymG _TParen
+      pure <$> identTok <|> firstIdentInParen . snd <$> parenTok
 
-firstIdentInParen :: [Tok] -> Maybe (SrcLoc, String)
+firstIdentInParen :: [Tok] -> Maybe NameLoc
 firstIdentInParen = listToMaybe . go
   where
     go [] = []
@@ -76,7 +89,7 @@ firstIdentInParen = listToMaybe . go
 declarator :: RE Tok ()
 declarator = do
   many (symbolTok "*")
-  void (msymG _TIdent) <|> parenDeclarator
+  void identTok <|> parenDeclarator
   many tokNotCommaNotIdent
   pure ()
   where

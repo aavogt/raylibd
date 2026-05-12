@@ -6,19 +6,31 @@ module GuessTD.Lex where
 
 import Data.Char
 import Data.List
-import Data.Loc (Loc(..), Pos (..), SrcLoc(..), advancePos, startPos)
+import Data.Loc (Loc(..), Pos (..), advancePos, startPos)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Text.Regex.Applicative
 import Control.Lens
+import PyF
+import Text.Show.Pretty
+
+newtype SLoc = SLoc Loc deriving Eq
+
+instance Show SLoc where
+  showsPrec _ (SLoc (Loc (Pos f line col char) (Pos f' line' col' char')))
+    | f    /= f'    = ('"':) . (f++) . ('-':) . (f'++) . (':':) . shows line  . ('-':) . shows line'  . ('"':)
+    | line /= line' = ('"':) . (f++) . (':':) . shows line  . ('-':) . shows line'  . ('"':)
+    | col  /= col'  = ('"':) . (f++) . (':':) . shows line  . (':':) . shows col   . ('-':) . shows col'  . ('"':)
+    | char /= char' = ('"':) . (f++) . (':':) . shows line  . (':':) . shows col   . (':':) . shows char . ('-':) . shows char' . ('"':)
+    | otherwise     = ('"':) . (f++) . (':':) . shows line  . (':':) . shows col   . (':':) . shows char . ('"':)
 
 data Tok
-  = TIdent SrcLoc String
-  | TNumber SrcLoc String
-  | TKeyword SrcLoc String
-  | TSymbol SrcLoc String
-  | TParen SrcLoc [Tok]
-  | TBlock SrcLoc [Tok]
+  = TIdent SLoc String
+  | TNumber SLoc String
+  | TKeyword SLoc String
+  | TSymbol SLoc String
+  | TParen SLoc [Tok]
+  | TBlock SLoc [Tok]
   deriving (Eq, Show)
 
 makePrisms ''Tok
@@ -57,11 +69,25 @@ isBuiltin = (`Set.member` builtinTypes)
 
 lineMarker = do
   string "# "
-  line <- many (psym isDigit)
+  line <- some (psym isDigit)
+  sym ' '
   sym '"'
-  file <- many (psym (/= '"'))
+  file <- some (psym (/= '"'))
   sym '"'
   pure (Pos file (read line) 1 0 )
+
+
+testPos :: IO Bool
+testPos = do
+  let tokens = lexTokens [fmt|
+# 40 "/usr/lib/gcc/x86_64-linux-gnu/15/include/stdarg.h" 3 4
+typedef __builtin_va_list __gnuc_va_list;
+# 103 "/usr/lib/gcc/x86_64-linux-gnu/15/include/stdarg.h" 3 4
+typedef __gnuc_va_list va_list;
+# 89 "/usr/local/include/raylib.h" 2 3
+|]
+  pPrint tokens
+  return (not $ "noLoc" `isInfixOf` show tokens)
 
 lexTokens :: String -> [Tok]
 lexTokens = go (startPos "<input>")
@@ -88,8 +114,8 @@ lexTokens = go (startPos "<input>")
           case findLongestPrefix tokRE (c:cs) of
             Just ((kind, lexeme), rest) ->
               let pos' = advancePosBy pos lexeme
-                  loc = SrcLoc (Loc pos pos')
-                  tok = mkTok kind loc lexeme
+                  loc = Loc pos pos'
+                  tok = mkTok kind (SLoc loc) lexeme
                in tok : go pos' rest
             Nothing -> go (advancePos pos c) cs
 
@@ -143,7 +169,7 @@ lexTokens = go (startPos "<input>")
           | x == '\'' = (advancePos pos x, xs)
           | otherwise = goEsc (advancePos pos x) xs
 
-data TokKind = TokIdent | TokNumber | TokSymbol
+data TokKind = TokIdent | TokNumber | TokSymbol deriving Show
 
 collapseBlocks :: [Tok] -> [Tok]
 collapseBlocks = fst . go

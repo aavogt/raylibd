@@ -14,7 +14,7 @@ import GuessTD.Lex
 import GuessTD.Parsers
 import Control.Monad
 
-newtype M = M { unM :: Map String SrcLoc }
+newtype M = M { unM :: Map String SLoc }
 instance Semigroup M where
   M a <> M b = M (M.unionWith keepEarliest  a b)
 instance Monoid M where
@@ -122,15 +122,15 @@ namesFromList = M . foldl insertEarliest mempty
 singletonName :: NameLoc -> M
 singletonName = namesFromList . pure
 
-insertEarliest ::  Map String SrcLoc -> NameLoc -> Map String SrcLoc
+insertEarliest ::  Map String SLoc -> NameLoc -> Map String SLoc
 insertEarliest m (loc, name) = M.insertWith keepEarliest name loc m
 
-keepEarliest :: SrcLoc -> SrcLoc -> SrcLoc
+keepEarliest :: SLoc -> SLoc -> SLoc
 keepEarliest newLoc oldLoc
   | srcLocOffset newLoc < srcLocOffset oldLoc = newLoc
   | otherwise = oldLoc
 
-srcLocOffset :: SrcLoc -> Int
-srcLocOffset (SrcLoc loc) = case loc of
+srcLocOffset :: SLoc -> Int
+srcLocOffset (SLoc loc) = case loc of
   NoLoc -> maxBound
   Loc start _ -> posCoff start

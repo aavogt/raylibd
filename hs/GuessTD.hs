@@ -19,7 +19,7 @@ guessTD cfile =
   let (err, names) = guessTDloc cfile
    in (err, map fst names)
 
-guessTDloc :: C8.ByteString -> (String, [(String, SrcLoc)])
+guessTDloc :: C8.ByteString -> (String, [(String, SLoc)])
 guessTDloc cfile =
   let input = C8.unpack cfile
       toks = collapseParens (collapseBlocks (lexTokens input))
