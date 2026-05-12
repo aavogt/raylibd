@@ -103,8 +103,11 @@ declarator = do
 parenHasPointerIdent :: [Tok] -> Bool
 parenHasPointerIdent = go False
   where
-    go sawPointer [] = sawPointer && isJust (firstIdentInParen [])
-    go sawPointer (TSymbol _ "*":rest) = go True rest
-    go sawPointer (TParen _ inner:rest) = go sawPointer inner || go sawPointer rest
-    go sawPointer (TIdent _ _:_) = sawPointer
-    go sawPointer (_:rest) = go sawPointer rest
+    go _ [] = False
+    go sawValue (TSymbol _ "*":rest)
+      | not sawValue = isJust (firstIdentInParen rest)
+      | otherwise = go sawValue rest
+    go sawValue (TIdent _ _:rest) = go True rest
+    go sawValue (TNumber _ _:rest) = go True rest
+    go sawValue (TParen _ inner:rest) = go sawValue inner || go sawValue rest
+    go sawValue (_:rest) = go sawValue rest

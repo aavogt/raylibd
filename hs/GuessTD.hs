@@ -117,6 +117,13 @@ e1 =
   }
 
   float cy = fmaxf(py, fminf(ball.y, py + paddlew));
+
+void draw_pixels() {
+  for (int i = 0; i < 256; i++) {
+    DrawRectangle(30 + ((16 + 30) * (i / 16)), 30 + (16 + 30) * (i % 16), 16,
+                  16, pixels[i]);
+  }
+}
   |]
 
 eqset a b = null (a \\ b) && null (b \\ a)
