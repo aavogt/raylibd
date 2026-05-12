@@ -23,7 +23,7 @@ guessTDloc :: C8.ByteString -> (String, [(String, SrcLoc)])
 guessTDloc cfile =
   let input = C8.unpack cfile
       toks = collapseParens (collapseBlocks (lexTokens input))
-      names = M.filterWithKey (\name _ -> not (isBuiltin name)) (collectTypeNames (splitStatements toks))
+      names = M.filterWithKey (\name _ -> not (isBuiltin name)) (unM (collectTypeNames (splitStatements toks)))
    in ("", M.toList names)
 
 e1 =

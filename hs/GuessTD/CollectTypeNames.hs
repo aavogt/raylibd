@@ -14,7 +14,13 @@ import GuessTD.Lex
 import GuessTD.Parsers
 import Control.Monad
 
-type P = RE Tok (Map String SrcLoc)
+newtype M = M { unM :: Map String SrcLoc }
+instance Semigroup M where
+  M a <> M b = M (M.unionWith keepEarliest  a b)
+instance Monoid M where
+ mempty = M mempty
+
+type P = RE Tok M
 
 typePrefix :: P
 typePrefix = many (qualifierTok <|> symbolTok "*") *> typeCore
@@ -76,7 +82,7 @@ decl = do
   declarator `sepBy1` symbolTok ","
   pure names
 
-collectNested :: [Tok] -> Map String SrcLoc
+collectNested :: [Tok] -> M
 collectNested toks = mconcat [ collectTypeNames (splitStatements inner) | TBlock _ inner <- toks ]
 
 parenGroups :: [Tok] -> [[Tok]]
@@ -88,7 +94,7 @@ parenGroups = go []
         in go acc' ts
     go acc (_:ts) = go acc ts
 
-collectParenParams :: [Tok] -> Map String SrcLoc
+collectParenParams :: [Tok] -> M
 collectParenParams toks =
   let declTokens = takeWhile (not . isAssign) toks
       matchParams group =
@@ -101,19 +107,19 @@ collectParenParams toks =
       TSymbol _ "=" -> True
       _ -> False
 
-collectAll :: [Tok] -> Map String SrcLoc
+collectAll :: [Tok] -> M
 collectAll toks =
   case match (typedef <|> function <|> decl) toks of
     Just names -> names <> collectParenParams toks <> collectNested toks
     Nothing -> collectNested toks
 
-collectTypeNames :: [[Tok]] -> Map String SrcLoc
+collectTypeNames :: [[Tok]] -> M
 collectTypeNames statements = mconcat (map collectAll statements)
 
-namesFromList :: [NameLoc] -> Map String SrcLoc
-namesFromList = foldl insertEarliest mempty
+namesFromList :: [NameLoc] -> M
+namesFromList = M . foldl insertEarliest mempty
 
-singletonName :: NameLoc -> Map String SrcLoc
+singletonName :: NameLoc -> M
 singletonName = namesFromList . pure
 
 insertEarliest ::  Map String SrcLoc -> NameLoc -> Map String SrcLoc
