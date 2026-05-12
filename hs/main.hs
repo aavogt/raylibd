@@ -9,6 +9,7 @@ import Data.IORef
 import Data.List
 import Data.Loc
 import Data.Maybe
+import GuessTD (guessTD)
 import Init.Pick
 import Language.C hiding (Init)
 import Paths_raylibd
@@ -21,11 +22,10 @@ import System.IO
 import System.Process
 import Text.Show.Pretty hiding (getDataDir)
 import Transform
-import GuessTD (guessTD)
 
 data Raylibd
   = Raylibd {inputmain, outputmain :: String, cflags, cflags_extra, typedefs, typedefs_extra :: [String], echo :: Bool, once :: Bool}
-  | Init { force :: Bool, list :: Bool, index :: Maybe Int, rest :: [String]}
+  | Init {force :: Bool, list :: Bool, index :: Maybe Int, rest :: [String]}
   deriving (Data)
 
 watchmode =
@@ -66,7 +66,7 @@ watch Init {..} = do
     [] -> do
       putStrLn "enter the project directory:"
       getLine
-    a:rest -> do
+    a : rest -> do
       unless (null rest) $ putStrLn $ "unused: " ++ show rest
       return a
   copyMainc <- case index of
@@ -81,11 +81,10 @@ watch Init {..} = do
   let mainc | isNothing copyMainc = ["main.c"] | otherwise = []
   mapM_ copyData $ mainc ++ words "main_hot.c Makefile vendor/Makefile"
   for_ copyMainc (copyPicked dest)
-  putStrLn ("cd "++dest)
+  putStrLn ("cd " ++ dest)
   setCurrentDirectory dest
   system "make compile_commands.json"
-  putStrLn $ "raylibd init complete: next step (cd "++dest ++ "; $TERM -e $EDITOR main.c & make)"
-
+  putStrLn $ "raylibd init complete: next step (cd " ++ dest ++ "; $TERM -e $EDITOR main.c & make)"
 watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1} \mgr -> do
   dir <- takeDirectory <$> makeAbsolute inputmain
   let cppFlags = "-MM" : cflags ++ cflags_extra
