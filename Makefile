@@ -7,8 +7,7 @@ RAYLIBD := raylibd --quiet
 
 watch: main_hot dll.so
 	ulimit -v 1000000
-	set -m
-	trap 'pkill -P $$$$' EXIT
+	trap 'pkill -P $$$$' EXIT INT TERM
 	LD_LIBRARY_PATH=. ./main_hot &
 	$(RAYLIBD) &
 	ls dll.c | entr make dll.so
