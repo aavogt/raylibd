@@ -39,6 +39,7 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 
 ## TODO
 
+ - [ ] emscripten output option wip/gregg-board/filament/main.c it's not much
  - [ ] remove unused original variable declarations copied into dll.c
  - [ ] #line pragmas
  - [ ] nested arrays could reuse more space?
