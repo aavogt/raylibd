@@ -20,8 +20,8 @@ watch: main_hot dll.so
 main_hot: $(RAYLIB_A) main_hot.c dll.c
 	$(CC) $(CFLAGS) -Wl,--whole-archive $(RAYLIB_A) -Wl,--no-whole-archive -lm -o $@ main_hot.c
 
-main: main.c
-	$(CC) $(CFLAGS) main.c $(RAYLIB_A) -lm -o main
+main: main.c $(ISPC_OBJS)
+	$(CC) $(CFLAGS) main.c $(ISPC_OBJS) $(RAYLIB_A) -lm -o main
 
 dll.so: dll.c $(ISPC_SOS)
 	$(CC) $(CFLAGS) -DRL_SO_IMPL -shared -Wl,-rpath,. -o dll.so.2 dll.c $(ISPC_SOS)
