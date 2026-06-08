@@ -23,6 +23,8 @@ data-files:
     init/21-ball-paddle.c
     init/22-ball-spring-trail.c
     init/30-ws2812-array.c
+    init/40-f.ispc
+    init/40-ispc.c
 
 executable raylibd
   main-is: main.hs

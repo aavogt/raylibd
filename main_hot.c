@@ -23,28 +23,60 @@ typedef struct {
 Plugin p = {0};
 
 const int ASSET_POLL_FRAMES = 1; // check assets every N frames
+#define MAX_WATCHED_SOS 128
 
-bool mtime_changed(const char *p) {
-  static struct timespec prev;
-  struct timespec cur;
-  static ulong lastns;
-  static bool have_prev = false;
+typedef struct {
+  const char *path;
+  struct timespec prev;
+  bool have_prev;
+} MTimeEntry;
+
+static MTimeEntry mtime_entries[MAX_WATCHED_SOS];
+static int mtime_entries_n = 0;
+
+static MTimeEntry *mtime_entry_get(const char *path) {
+  for (int i = 0; i < mtime_entries_n; i++) {
+    if (strcmp(mtime_entries[i].path, path) == 0)
+      return &mtime_entries[i];
+  }
+  if (mtime_entries_n >= MAX_WATCHED_SOS)
+    return NULL;
+  mtime_entries[mtime_entries_n] = (MTimeEntry){.path = path};
+  return &mtime_entries[mtime_entries_n++];
+}
+
+static bool mtime_changed_path(const char *p) {
   struct stat st;
-
   if (stat(p, &st))
     return false;
 
-  cur = st.st_mtim;
-  if (have_prev) {
-    bool r = cur.tv_sec > prev.tv_sec ||
-             (cur.tv_sec == prev.tv_sec && cur.tv_nsec > prev.tv_nsec);
-    prev = cur;
-    return r;
-  } else {
-    have_prev = true;
-    prev = cur;
+  MTimeEntry *entry = mtime_entry_get(p);
+  if (!entry)
     return false;
+
+  struct timespec cur = st.st_mtim;
+  if (entry->have_prev) {
+    bool r = cur.tv_sec > entry->prev.tv_sec ||
+             (cur.tv_sec == entry->prev.tv_sec &&
+              cur.tv_nsec > entry->prev.tv_nsec);
+    entry->prev = cur;
+    return r;
   }
+
+  entry->have_prev = true;
+  entry->prev = cur;
+  return false;
+}
+
+static bool any_plugin_changed(void) {
+  if (mtime_changed_path("dll.so"))
+    return true;
+  for (int i = 0; i < RL_ISPC_SO_FILES_COUNT; i++) {
+    const char *path = RL_ISPC_SO_FILES[i];
+    if (path && mtime_changed_path(path))
+      return true;
+  }
+  return false;
 }
 
 void plugin_load() {
@@ -84,7 +116,7 @@ int main(int argc, char **argv) {
       asset_frame = 0;
     }
     if (frame++ >= MTIME_SKIP_FRAMES) {
-      if (mtime_changed("dll.so")) {
+      if (any_plugin_changed()) {
         printf("main_hot reloaded\n");
 
         Plugin q = p;

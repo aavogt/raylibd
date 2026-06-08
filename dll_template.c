@@ -4,6 +4,8 @@
 #include <sys/stat.h>
 #include <string.h>
 
+//ISPCSOFILES
+
 // --- Asset hot-reload infrastructure ---
 #define _RL_MAX_ASSET_PATHS 4
 #define _RL_MAX_ASSETS 64

@@ -1,7 +1,7 @@
 {- HLINT ignore "Redundant lambda" -}
 
 import Control.Concurrent
-import Control.Lens
+import Control.Lens hiding ((<.>))
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.Foldable
@@ -115,18 +115,21 @@ watch Raylibd {..} = withManagerConf defaultConfig {confDebounce = Debounce 0.1}
           Left e -> hPrint stderr result
           _ -> return ()
 
+        ispcSOs <- discoverIspcSOFiles
         sub <- atomicModifyIORef' prev (substituteTemplate from)
-        subbed <- sub . (includes_prop ++) <$> readFile templatec
+        template <- readFile templatec
+        let subbed = sub $ injectIspcSOFiles ispcSOs (includes_prop ++ template)
         writeFile outputmain subbed
         when echo $ putStrLn subbed
 
   reloadMainC
   when once exitSuccess
   ch <- newChan
-  watchTreeChan mgr dir (\p -> takeFileName (eventPath p) `elem` includes && notRemoved p) ch
+  watchTreeChan mgr dir (\p -> shouldReload includes p) ch
   forever do
     ev <- readChan ch
     reloadMainC
+
 
 split :: String -> [String]
 split [] = [[]]
@@ -159,6 +162,38 @@ parseCFileWithGcc gcc flags inferTypedefs typedefs input = do
   unless (null err) $ pPrint ("GuessTD.guessTypeDefs parse error:", err)
   return $ parse [Gcc] (typedefs ++ inferredTypedefs) parseUnit (C8.pack contents) (Just (Pos input 1 1 0))
 
+discoverIspcSOFiles :: IO [FilePath]
+discoverIspcSOFiles = do
+  names <- listDirectory "."
+  pure
+    $ sort
+    $ map (("./" ++) . (<.> "so") . dropExtension)
+    $ filter ((== ".ispc") . takeExtension) names
+
+injectIspcSOFiles :: [FilePath] -> String -> String
+injectIspcSOFiles soFiles = unlines . concatMap replaceLine . lines
+  where
+    replaceLine "//ISPCSOFILES" = lines (renderIspcSOFiles soFiles)
+    replaceLine x = [x]
+
+renderIspcSOFiles :: [FilePath] -> String
+renderIspcSOFiles xs = unlines
+  [ "const char *RL_ISPC_SO_FILES[] = {"
+  , entries
+  , "};"
+  , "const int RL_ISPC_SO_FILES_COUNT = " ++ show (length xs) ++ ";"
+  ]
+  where
+    entries = case xs of
+      [] -> "  NULL"
+      _ -> intercalate "\n" (map (\p -> "  \"" ++ p ++ "\",") xs)
+
+shouldReload :: [FilePath] -> Event -> Bool
+shouldReload includes p =
+  notRemoved p &&
+  (takeFileName (eventPath p) `elem` includes || takeExtension (eventPath p) == ".ispc")
+
+notRemoved :: Event -> Bool
 notRemoved = \case
   Removed {} -> False
   _ -> True
