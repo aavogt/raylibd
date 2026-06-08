@@ -70,6 +70,13 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
 - [ ] deleted structs are used but not defined in the generated code
 - [ ] moving code to a #include "foo.inc" breaks the build/recompilation checking suggest/do `rm dll.c && make`
 - [ ] raylibd init\ntic\npicks  turing.c not tictagtoe.c, so drop .d or change the cost of inserts to depend on in/out
+- [ ] wip/emscripten-soa creates functions to mmap csv files, it doesn't quite seem right to have to edit the makefile?
+
+      dll.so: dll.c
+        sed -e '/^void Init.*{/ s/$$/;mmap_data_points();/' -e '/^void Reinit.*{/ s/$$/;mmap_data_points();/' < $^ > dll2.c
+        $(CC) $(CFLAGS) -DRL_SO_IMPL -shared -o dll.so.2 dll2.c
+        mv dll.so.2 $@
+
 - [ ] name anonymous structs
 
       dll.c: In function ‘ReinitAlloc’:
