@@ -26,9 +26,10 @@ testEA = do
   Left e <- try @SomeException $ runWithStdin "inp" (return $ error "boom eval" :: IO ())
   return ("boom eval" `isPrefixOf` show e)
 
-getContents2 = do
+-- | getContentsStrict blocks until EOF
+getContentsStrict = do
   b <- isEOF
-  if b then return [] else (:) <$> getChar <*> getContents2
+  if b then return [] else (:) <$> getChar <*> getContentsStrict
 
 runWithStdin :: (NFData a) => String -> IO a -> IO a
 runWithStdin input action = do
@@ -55,7 +56,7 @@ runWithStdin input action = do
 repipeFromMatch :: String -> IO ()
 repipeFromMatch input = do
   syncToInput input
-  rest <- getContents2
+  rest <- getContentsStrict
   (readFd, writeFd) <- System.Posix.IO.createPipe
   _ <- forkIO $ do
     let writeAndClose = fdWrite writeFd (input ++ rest) >> closeFd writeFd
