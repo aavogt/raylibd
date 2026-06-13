@@ -24,7 +24,7 @@ main: main.c $(ISPC_OBJS)
 	$(CC) $(CFLAGS) main.c $(ISPC_OBJS) $(RAYLIB_A) -lm -o main
 
 dll.so: dll.c $(ISPC_SOS)
-	$(CC) $(CFLAGS) -DRL_SO_IMPL -shared -Wl,-rpath,. -o dll.so.2 dll.c $(ISPC_SOS)
+	$(CC) $(CFLAGS) -DRL_SO_IMPL -shared -Wl,-rpath,. -Wl,--no-as-needed -o dll.so.2 dll.c $(ISPC_SOS)
 	mv dll.so.2 $@
 
 dll.c: main.c $(ISPC_HEADERS)
@@ -37,7 +37,8 @@ dll.c: main.c $(ISPC_HEADERS)
 	@true
 
 %.so: %.ispc.o
-	$(CC) -shared -o $@ $<
+	$(CC) -shared -o $@_ $<
+	mv $@_ $@
 
 compile_commands.json: $(RAYGUI_H)
 	bear -- $(CC) $(CFLAGS) main.c -fsyntax-only
