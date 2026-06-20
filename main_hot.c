@@ -132,14 +132,12 @@ int main(int argc, char **argv) {
           void *t = aligned_alloc(p.api->align, capacity);
           memset(t, 0, capacity);
           memcpy(t, s, MIN(p.api->size, q.api->size));
-          ((struct state *)t)->argc = argc;
-          ((struct state *)t)->argv = argv;
           p.api->ReinitAlloc((struct prevstate *)s, t);
           free(s);
           s = t;
-        } else {
           s->argc = argc;
           s->argv = argv;
+        } else {
           p.api->ReinitInPlace((struct prevstate *)s, s);
         }
       }
