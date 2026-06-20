@@ -91,3 +91,4 @@ Save changes to `main.c` or `10-tint.fs` and you should be able to see the effec
       vs the workaround:
       typedef struct { float x[NSTORE]; } Store;
       Store store;
+- [ ] float x[2*3] is treated differently than x[6]
