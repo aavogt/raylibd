@@ -133,11 +133,17 @@ getBodies spec prevSpec decls = listToMaybe $ mapMaybe splitMainDef decls
           reinitAllocBody = Block (map BlockStm (reinitAllocStmts prevSpec spec)) noLoc
           reinitInPlaceBody = Block (map BlockStm (reinitInPlaceStmts prevSpec spec)) noLoc
           structBody = buildStateMembers (fields spec)
-       in Just (Bodies {..}) & applyRewrites (useRewrite spec (mkIdent "s"))
+       in Just (Bodies {..}) & applyRewrites (useRewrite spec (mkIdent "s") <> argcArgvRewrite)
 
     keepInitItem item =
       let names = map identName (toListOf biplate item)
        in all keepInit names
+
+argcArgvRewrite :: [UseRewrite]
+argcArgvRewrite =
+  [ UseRewrite "argc" [cexp| s->argc |],
+    UseRewrite "argv" [cexp| s->argv |]
+  ]
 
 data SplitOnLastWhile = SplitOnLastWhile {loopCond :: Maybe Exp, preItems, loopBodyItems, postItems :: [BlockItem]}
 

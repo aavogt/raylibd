@@ -72,6 +72,12 @@ spec = do
           void g() { printf(); }
           |]
 
+  describe "argc argv rewrite" do
+    let [BodiesPP { stepbody }] = getBodiesPP [[cunit| void main(int argc, char **argv) { while(true) { printf("%d %s", argc, argv[0]); } } |]]
+    it "rewrites argc/argv to state fields" do
+      stepbody `shouldSatisfy` isInfixOf "s->argc"
+      stepbody `shouldSatisfy` isInfixOf "s->argv"
+
   describe "dropconst" do
       let const = [cunit| const float x, y; double z; |]
       gold "ast" const

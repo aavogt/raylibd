@@ -20,11 +20,15 @@ typedef struct {
 
 //DECLS
 struct state {
+int argc;
+char **argv;
 //STRUCTBODY
 AssetSlot _assets[_RL_MAX_ASSETS];
 int _nassets;
 };
 struct prevstate {
+int argc;
+char **argv;
 //PREVSTRUCTBODY
 AssetSlot _assets[_RL_MAX_ASSETS];
 int _nassets;

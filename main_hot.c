@@ -105,6 +105,8 @@ int main(int argc, char **argv) {
   unsigned long capacity = 2 * p.api->size;
   struct state *s = aligned_alloc(p.api->align, capacity);
   memset(s, 0, capacity);
+  s->argc = argc;
+  s->argv = argv;
   p.api->Init(s);
 
   int frame = 0;
@@ -130,11 +132,16 @@ int main(int argc, char **argv) {
           void *t = aligned_alloc(p.api->align, capacity);
           memset(t, 0, capacity);
           memcpy(t, s, MIN(p.api->size, q.api->size));
+          ((struct state *)t)->argc = argc;
+          ((struct state *)t)->argv = argv;
           p.api->ReinitAlloc((struct prevstate *)s, t);
           free(s);
           s = t;
-        } else
+        } else {
+          s->argc = argc;
+          s->argv = argv;
           p.api->ReinitInPlace((struct prevstate *)s, s);
+        }
       }
       frame = 0;
     }
