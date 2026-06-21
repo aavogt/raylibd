@@ -104,6 +104,10 @@ toDecl (FuncDef f s) | f ^. funcName /= "main" = Just $ DecDef (InitGroup (f ^. 
     proto = Proto (f ^. funcPtr) (f ^. funcParams) noLoc
 toDecl td@(DecDef (TypedefGroup {}) _) = Just td
 toDecl td@(DecDef (InitGroup (DeclSpec [] [] Tstruct{} _) [] [] _) _) = Just td
+toDecl td@(DecDef (InitGroup _ _ inits _) _) | any isFuncProtoInit inits = Just td
+  where
+    isFuncProtoInit (Init _ Proto{} _ _ _ _) = True
+    isFuncProtoInit _ = False
 toDecl _ = Nothing
 
 --------------------------------------------------------------------------------
